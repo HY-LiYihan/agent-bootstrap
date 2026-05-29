@@ -30,13 +30,13 @@ jobs:
         run: |
           tmp="$(mktemp -d)"
           CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
-          rg -n 'web_search = "live"' "$tmp/codex/config.toml"
-          rg -n 'model_verbosity = "medium"' "$tmp/codex/config.toml"
-          rg -n 'model_reasoning_summary = "auto"' "$tmp/codex/config.toml"
-          rg -n 'project_doc_max_bytes = 65536' "$tmp/codex/config.toml"
-          rg -n 'request_max_retries = 4' "$tmp/codex/config.toml"
-          rg -n 'stream_max_retries = 5' "$tmp/codex/config.toml"
-          rg -n 'stream_idle_timeout_ms = 300000' "$tmp/codex/config.toml"
+          grep -nE 'web_search = "live"' "$tmp/codex/config.toml"
+          grep -nE 'model_verbosity = "medium"' "$tmp/codex/config.toml"
+          grep -nE 'model_reasoning_summary = "auto"' "$tmp/codex/config.toml"
+          grep -nE 'project_doc_max_bytes = 65536' "$tmp/codex/config.toml"
+          grep -nE 'request_max_retries = 4' "$tmp/codex/config.toml"
+          grep -nE 'stream_max_retries = 5' "$tmp/codex/config.toml"
+          grep -nE 'stream_idle_timeout_ms = 300000' "$tmp/codex/config.toml"
       - name: Codex config preserves plugin tail
         run: |
           tmp="$(mktemp -d)"
@@ -52,12 +52,12 @@ jobs:
           enabled = true
           TOML
           CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
-          rg -n 'model = "gpt-5.5"' "$tmp/codex/config.toml"
-          rg -n '^\[agents\]' "$tmp/codex/config.toml"
-          rg -n 'max_threads = 10' "$tmp/codex/config.toml"
-          rg -n '^\[marketplaces.openai-bundled\]' "$tmp/codex/config.toml"
-          rg -n 'source = "/tmp/bundled-marketplaces/openai-bundled"' "$tmp/codex/config.toml"
-          rg -n '^\[plugins\."browser-use@openai-bundled"\]' "$tmp/codex/config.toml"
+          grep -nE 'model = "gpt-5.5"' "$tmp/codex/config.toml"
+          grep -nE '^\[agents\]' "$tmp/codex/config.toml"
+          grep -nE 'max_threads = 10' "$tmp/codex/config.toml"
+          grep -nE '^\[marketplaces.openai-bundled\]' "$tmp/codex/config.toml"
+          grep -nE 'source = "/tmp/bundled-marketplaces/openai-bundled"' "$tmp/codex/config.toml"
+          grep -nE '^\[plugins\."browser-use@openai-bundled"\]' "$tmp/codex/config.toml"
       - name: Codex install backup and restore
         run: |
           tmp="$(mktemp -d)"
@@ -67,10 +67,10 @@ jobs:
           CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
           backup_dir="$(cat "$tmp/codex/.last-install-backup")"
           test -f "$backup_dir/codex/config.toml"
-          rg -n 'model = "gpt-5.5"' "$tmp/codex/config.toml"
+          grep -nE 'model = "gpt-5.5"' "$tmp/codex/config.toml"
           CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" ./agents/codex/install.sh --restore "$backup_dir"
-          rg -n 'model = "before"' "$tmp/codex/config.toml"
-          rg -n 'before agents' "$tmp/project/AGENTS.md"
+          grep -nE 'model = "before"' "$tmp/codex/config.toml"
+          grep -nE 'before agents' "$tmp/project/AGENTS.md"
       - name: Codex dispatcher dry run
         run: AGENT=codex AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 ./install.sh --local . --dry-run --skip-codex-install --skip-shell-rc --yes
       - name: Codex dispatcher no-extra-args dry run
