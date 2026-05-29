@@ -77,12 +77,12 @@ function Main {
     $installer = Join-Path $sourceDir "agents\codex\install.ps1"
     if (-not (Test-Path $installer)) { Fail "Codex installer not found: $installer" }
     Write-Ok "Selected stable agent: codex"
-    $args = @("-LocalSource", $sourceDir)
-    if ($DryRun) { $args += "-DryRun" }
-    if ($Restore) { $args += @("-Restore", $Restore) }
-    if ($SkipCodexInstall) { $args += "-SkipCodexInstall" }
-    if ($SkipProfileUpdate) { $args += "-SkipProfileUpdate" }
-    & $installer @args
+    $installerArgs = @("-LocalSource", $sourceDir)
+    if ($DryRun) { $installerArgs += "-DryRun" }
+    if ($Restore) { $installerArgs += @("-Restore", $Restore) }
+    if ($SkipCodexInstall) { $installerArgs += "-SkipCodexInstall" }
+    if ($SkipProfileUpdate) { $installerArgs += "-SkipProfileUpdate" }
+    & $installer @installerArgs
 }
 
 Main

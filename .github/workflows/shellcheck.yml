@@ -25,7 +25,7 @@ jobs:
         run: |
           tmp="$(mktemp -d)"
           PATH="/usr/bin:/bin:/usr/sbin:/sbin" NVM_DIR="$tmp/nvm" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --dry-run --no-bun --skip-shell-rc --yes | tee "$tmp/out"
-          rg -n 'npm is missing|Installing NVM|nvm/archive|npm install -g @openai/codex' "$tmp/out"
+          grep -E 'npm is missing|Installing NVM|nvm/archive|npm install -g @openai/codex' "$tmp/out"
       - name: Codex stable config generation
         run: |
           tmp="$(mktemp -d)"
