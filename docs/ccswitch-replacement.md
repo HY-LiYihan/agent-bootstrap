@@ -6,7 +6,7 @@ Agent Bootstrap replaces the core day-to-day provider switching workflow with a 
 - Store named gateway profiles in `~/.agent-bootstrap/profiles.json`.
 - Apply one profile to Codex, Claude Code, and OpenClaw with `switch.js use <name>`.
 - Add Codex++ as an optional Codex App enhancer with a separate one-line install, without mixing it into provider switching.
-- Keep fixed remote entrypoints through `stable` and `latest` tags.
+- Keep fixed remote entrypoints through `stable` and `latest` branches.
 - Avoid printing full tokens; store profile state with file mode `600` where supported.
 - For Claude Code, write both `settings.json` and shell env helpers that unset `CLAUDE_CODE_OAUTH_TOKEN`, which can otherwise override API-token settings.
 

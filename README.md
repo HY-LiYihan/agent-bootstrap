@@ -1,6 +1,71 @@
 # Agent Bootstrap
 
-One-click bootstrapper for multiple AI coding agents and Codex App addons. It currently supports Codex, Claude Code, OpenClaw, and Codex++, with shared `stable` / `latest` install tags and cross-platform entrypoints.
+One-click bootstrapper focused on making Codex installation repeatable on macOS, Ubuntu/Linux, and Windows. Other agents remain in the repo, but the stable path is now optimized for Codex first.
+
+## Stable Codex Install
+
+macOS:
+
+```bash
+CODEX_TOKEN="YOUR_TOKEN" CODEX_API_URL="YOUR_BASE_URL" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.sh)"
+```
+
+Ubuntu/Linux:
+
+```bash
+CODEX_TOKEN="YOUR_TOKEN" CODEX_API_URL="YOUR_BASE_URL" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.sh)"
+```
+
+Windows PowerShell:
+
+```powershell
+$env:CODEX_TOKEN='YOUR_TOKEN'; $env:CODEX_API_URL='YOUR_BASE_URL'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.ps1 | iex
+```
+
+The stable command has no bundled token and no bundled private base URL. Both values must be provided explicitly.
+
+## Safety And Restore
+
+Before writing Codex files, the Codex installer creates a restore snapshot by default:
+
+```text
+~/.codex/backups_state/install/YYYYMMDDHHMMSS
+```
+
+The snapshot covers the files this installer touches:
+
+- `~/.codex/config.toml`
+- `~/.codex/private.env`
+- `~/.codex/rules/default.rules`
+- `~/.codex/state_5.sqlite`
+- `PROJECT_DIR/AGENTS.md`
+- the detected shell or PowerShell profile
+
+Restore on macOS/Ubuntu/Linux:
+
+```bash
+CODEX_HOME="$HOME/.codex" CODEX_PROJECT_DIR="$PWD" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.sh)" -- --restore "$HOME/.codex/backups_state/install/YYYYMMDDHHMMSS"
+```
+
+Restore on Windows PowerShell:
+
+```powershell
+$env:CODEX_HOME="$HOME\.codex"; $env:CODEX_PROJECT_DIR=(Get-Location).Path; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.ps1 -OutFile "$env:TEMP\install-codex.ps1"; & "$env:TEMP\install-codex.ps1" -Restore "$HOME\.codex\backups_state\install\YYYYMMDDHHMMSS"
+```
+
+Disable the pre-install restore snapshot only when you already have an external backup:
+
+```bash
+... install-codex.sh --no-install-backup
+```
+
+```powershell
+.\install-codex.ps1 # default creates a backup; use agents\codex\install.ps1 -NoInstallBackup only for local advanced use
+```
+
+## Download Reliability
+
+The public entrypoints download this repository through GitHub codeload branch archives, then validate the archive before extraction. `stable` and `latest` are maintained as branches, not moving tags, to avoid raw GitHub tag-cache ambiguity.
 
 ## Supported Agents
 
@@ -326,16 +391,17 @@ Claude Code note:
 
 ## Release Flow
 
-Use semantic version tags for immutable releases, and move `stable` / `latest` to the recommended release so install commands do not need to change.
+Use semantic version tags for immutable releases, and move the `stable` / `latest` branches to the recommended release so install commands do not need to change. Do not recreate moving `stable` or `latest` tags; raw GitHub can cache or prefer same-name tags.
 
-- `stable`: recommended default install target.
-- `latest`: alias for the newest published install target.
+- `stable`: recommended default install target branch.
+- `latest`: branch alias for the newest published install target.
 - `vX.Y`: immutable version tags for pinning and rollback.
 
 ```bash
-git tag -f stable
-git tag -f latest
-git push -f origin stable latest
+git push origin main
+git tag vX.Y.Z
+git push origin vX.Y.Z
+git push -f origin HEAD:refs/heads/stable HEAD:refs/heads/latest
 ```
 
 ## Security Notes

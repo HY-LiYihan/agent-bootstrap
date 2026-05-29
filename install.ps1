@@ -100,11 +100,27 @@ function Get-SourceDir {
     }
 
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("agent-bootstrap-" + [Guid]::NewGuid().ToString("N"))
-    $zip = "$tmp.zip"
-    $url = "https://github.com/$BootstrapRepo/archive/$BootstrapRef.zip"
+    New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+    $zip = Join-Path $tmp "bootstrap.zip"
+    $urls = @(
+        "https://codeload.github.com/$BootstrapRepo/zip/refs/heads/$BootstrapRef",
+        "https://codeload.github.com/$BootstrapRepo/zip/refs/tags/$BootstrapRef",
+        "https://github.com/$BootstrapRepo/archive/$BootstrapRef.zip"
+    )
     Write-Info "Downloading agent bootstrap assets from $BootstrapRepo@$BootstrapRef"
-    Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-    Expand-Archive -Path $zip -DestinationPath $tmp -Force
+    $downloaded = $false
+    foreach ($url in $urls) {
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+            Expand-Archive -Path $zip -DestinationPath $tmp -Force
+            $downloaded = $true
+            break
+        } catch {
+            Remove-Item -Path $zip -Force -ErrorAction SilentlyContinue
+            Get-ChildItem -Path $tmp -Directory -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    if (-not $downloaded) { Fail "Failed to download a valid bootstrap archive from $BootstrapRepo@$BootstrapRef" }
     $child = Get-ChildItem -Path $tmp -Directory | Select-Object -First 1
     if (-not $child) { Fail "Unable to expand bootstrap assets" }
     return $child.FullName

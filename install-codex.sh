@@ -47,23 +47,28 @@ download_source() {
     return 0
   fi
 
-  local tmp_dir url archive
+  local tmp_dir archive url ok
   tmp_dir="$(mktemp -d)"
   archive="$tmp_dir/bootstrap.tar.gz"
-  url="https://codeload.github.com/${BOOTSTRAP_REPO}/tar.gz/refs/heads/${BOOTSTRAP_REF}"
   info "Downloading Codex bootstrap assets from $BOOTSTRAP_REPO@$BOOTSTRAP_REF" >&2
-  if command -v curl >/dev/null 2>&1; then
-    if ! curl --retry 3 --retry-delay 1 -fsSL "$url" -o "$archive"; then
-      fail "Failed to download Codex bootstrap assets from $BOOTSTRAP_REPO@$BOOTSTRAP_REF"
+  ok=0
+  for url in \
+    "https://codeload.github.com/${BOOTSTRAP_REPO}/tar.gz/refs/heads/${BOOTSTRAP_REF}" \
+    "https://codeload.github.com/${BOOTSTRAP_REPO}/tar.gz/refs/tags/${BOOTSTRAP_REF}" \
+    "https://github.com/${BOOTSTRAP_REPO}/archive/${BOOTSTRAP_REF}.tar.gz"; do
+    if command -v curl >/dev/null 2>&1; then
+      curl --retry 3 --retry-delay 1 -fsSL "$url" -o "$archive" || continue
+    elif command -v wget >/dev/null 2>&1; then
+      wget -qO "$archive" "$url" || continue
+    else
+      fail "curl or wget is required"
     fi
-  elif command -v wget >/dev/null 2>&1; then
-    if ! wget -qO "$archive" "$url"; then
-      fail "Failed to download Codex bootstrap assets from $BOOTSTRAP_REPO@$BOOTSTRAP_REF"
+    if tar -tzf "$archive" >/dev/null 2>&1; then
+      ok=1
+      break
     fi
-  else
-    fail "curl or wget is required"
-  fi
-  if ! tar -tzf "$archive" >/dev/null 2>&1; then
+  done
+  if [[ "$ok" != "1" ]]; then
     fail "Downloaded archive is not a valid gzip tarball from $BOOTSTRAP_REPO@$BOOTSTRAP_REF"
   fi
   tar -xzf "$archive" -C "$tmp_dir" --strip-components=1

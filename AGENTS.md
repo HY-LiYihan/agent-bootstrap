@@ -4,7 +4,7 @@
 
 - GitHub owner/account: `HY-LiYihan`
 - Primary branch: `main`
-- Fixed install refs: `stable` and `latest`
+- Fixed install refs: `stable` and `latest` branches
 - Public install entrypoints use `https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/...`
 
 ## Secret Handling
@@ -21,19 +21,19 @@ rg -n "sk-|sssaicode-|TOKEN=.*|KEY=.*|BASE_URL=.*" .
 
 ## Release Discipline
 
-- After changing public install scripts, push `main` and move both fixed tags:
+- After changing public install scripts, push `main` and move both fixed branches. Do not recreate moving `stable` or `latest` tags because raw GitHub can cache or prefer same-name tags over branches.
 
 ```bash
-git tag -f stable
-git tag -f latest
-git push -f origin stable latest
+git push origin main
+git push -f origin HEAD:refs/heads/stable HEAD:refs/heads/latest
 ```
 
 - For user-facing changes, also create an immutable version tag and GitHub Release, for example `v5.4.1`.
-- After moving `stable`, verify the remote raw script, not just the local file:
+- After moving `stable`, verify the remote raw script and an end-to-end dry-run, not just the local file:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/agent | rg "Agent Bootstrap Wizard|Codex ready|stable"
+CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.sh)" -- --dry-run --skip-codex-install --skip-shell-rc --yes
 ```
 
 ## Safety Expectations

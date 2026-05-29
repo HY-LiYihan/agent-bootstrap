@@ -40,6 +40,9 @@ SKIP_CODEX_INSTALL=0
 SKIP_SHELL_RC=0
 INSTALL_BUN=1
 SYNC_PROVIDER_HISTORY="${CODEX_SYNC_PROVIDER_HISTORY:-1}"
+INSTALL_BACKUP="${CODEX_INSTALL_BACKUP:-1}"
+INSTALL_BACKUP_DIR="${CODEX_INSTALL_BACKUP_DIR:-}"
+RESTORE_FROM=""
 OS_ID=""
 OS_NAME=""
 ARCH_NAME=""
@@ -87,6 +90,9 @@ Options:
   --force              Allow reinstalling Codex and overwriting managed files
   --skip-codex-install Do not install or update @openai/codex
   --skip-shell-rc      Do not add source line to shell startup file
+  --no-install-backup  Do not create a pre-install restore snapshot
+  --backup-dir DIR     Write the pre-install restore snapshot to DIR
+  --restore DIR        Restore files from a previous install backup and exit
   --sync-provider-history     Sync old Codex sessions to the selected model_provider (default)
   --no-sync-provider-history  Skip provider history sync
   --no-bun             Do not install Bun automatically; use npm if available
@@ -112,6 +118,8 @@ Environment:
   CODEX_STREAM_IDLE_TIMEOUT_MS        Provider stream idle timeout ms (default: ${STREAM_IDLE_TIMEOUT_MS})
   CODEX_SECURITY_PROFILE              max or safe (default: ${SECURITY_PROFILE})
   CODEX_SYNC_PROVIDER_HISTORY         1 or 0 (default: ${SYNC_PROVIDER_HISTORY})
+  CODEX_INSTALL_BACKUP                1 or 0; create pre-install restore snapshot (default: ${INSTALL_BACKUP})
+  CODEX_INSTALL_BACKUP_DIR            Optional explicit backup directory
   CODEX_NPM_REGISTRY                  npm fallback registry (default: ${NPM_REGISTRY})
   CODEX_INSTALL_NODE                  1 or 0; install Node.js with NVM if npm is missing (default: ${INSTALL_NODE})
   CODEX_NODE_VERSION                  Node.js version for NVM fallback (default: ${NODE_VERSION})
@@ -131,6 +139,9 @@ while [[ $# -gt 0 ]]; do
     --force) FORCE=1; shift ;;
     --skip-codex-install) SKIP_CODEX_INSTALL=1; shift ;;
     --skip-shell-rc) SKIP_SHELL_RC=1; shift ;;
+    --no-install-backup) INSTALL_BACKUP=0; shift ;;
+    --backup-dir) INSTALL_BACKUP_DIR="${2:?missing backup dir}"; shift 2 ;;
+    --restore) RESTORE_FROM="${2:?missing backup dir}"; shift 2 ;;
     --sync-provider-history) SYNC_PROVIDER_HISTORY=1; shift ;;
     --no-sync-provider-history) SYNC_PROVIDER_HISTORY=0; shift ;;
     --no-bun) INSTALL_BUN=0; shift ;;
@@ -181,6 +192,11 @@ validate_required_inputs() {
     1|true|yes|on) INSTALL_NODE=1 ;;
     0|false|no|off) INSTALL_NODE=0 ;;
     *) fail "Invalid CODEX_INSTALL_NODE: $INSTALL_NODE. Use 1 or 0." ;;
+  esac
+  case "$INSTALL_BACKUP" in
+    1|true|yes|on) INSTALL_BACKUP=1 ;;
+    0|false|no|off) INSTALL_BACKUP=0 ;;
+    *) fail "Invalid CODEX_INSTALL_BACKUP: $INSTALL_BACKUP. Use 1 or 0." ;;
   esac
 }
 
@@ -311,23 +327,28 @@ download_source() {
     return 0
   fi
 
-  local tmp_dir archive
+  local tmp_dir archive url ok
   tmp_dir="$(mktemp -d)"
   archive="$tmp_dir/bootstrap.tar.gz"
-  local url="https://codeload.github.com/${BOOTSTRAP_REPO}/tar.gz/refs/heads/${BOOTSTRAP_REF}"
   log_info "Downloading bootstrap assets from $BOOTSTRAP_REPO@$BOOTSTRAP_REF" >&2
-  if command_exists curl; then
-    if ! curl --retry 3 --retry-delay 1 -fsSL "$url" -o "$archive"; then
-      fail "Failed to download bootstrap assets from $BOOTSTRAP_REPO@$BOOTSTRAP_REF"
+  ok=0
+  for url in \
+    "https://codeload.github.com/${BOOTSTRAP_REPO}/tar.gz/refs/heads/${BOOTSTRAP_REF}" \
+    "https://codeload.github.com/${BOOTSTRAP_REPO}/tar.gz/refs/tags/${BOOTSTRAP_REF}" \
+    "https://github.com/${BOOTSTRAP_REPO}/archive/${BOOTSTRAP_REF}.tar.gz"; do
+    if command_exists curl; then
+      curl --retry 3 --retry-delay 1 -fsSL "$url" -o "$archive" || continue
+    elif command_exists wget; then
+      wget -qO "$archive" "$url" || continue
+    else
+      fail "curl or wget is required"
     fi
-  elif command_exists wget; then
-    if ! wget -qO "$archive" "$url"; then
-      fail "Failed to download bootstrap assets from $BOOTSTRAP_REPO@$BOOTSTRAP_REF"
+    if tar -tzf "$archive" >/dev/null 2>&1; then
+      ok=1
+      break
     fi
-  else
-    fail "curl or wget is required"
-  fi
-  if ! tar -tzf "$archive" >/dev/null 2>&1; then
+  done
+  if [[ "$ok" != "1" ]]; then
     fail "Downloaded archive is not a valid gzip tarball from $BOOTSTRAP_REPO@$BOOTSTRAP_REF"
   fi
   tar -xzf "$archive" -C "$tmp_dir" --strip-components=1
@@ -455,6 +476,82 @@ backup_file() {
   local backup="$file.backup.$(date +%Y%m%d_%H%M%S)"
   run cp "$file" "$backup"
   log_ok "Backup created: $backup"
+}
+
+copy_if_exists() {
+  local src="$1"
+  local dest="$2"
+  if [[ -f "$src" ]]; then
+    mkdir -p "$(dirname "$dest")"
+    cp -p "$src" "$dest"
+  fi
+}
+
+create_install_backup() {
+  [[ "$INSTALL_BACKUP" == "1" ]] || return 0
+  log_step "Safety" "Create pre-install restore snapshot"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf "DRY-RUN: create restore snapshot for %s and %s\n" "$CODEX_HOME" "$PROJECT_DIR"
+    return 0
+  fi
+
+  local backup_dir shell_rc
+  shell_rc="$(detect_shell_rc)"
+  if [[ -n "$INSTALL_BACKUP_DIR" ]]; then
+    backup_dir="$INSTALL_BACKUP_DIR"
+  else
+    backup_dir="$CODEX_HOME/backups_state/install/$(date +%Y%m%d%H%M%S)"
+  fi
+  mkdir -p "$backup_dir/codex" "$backup_dir/project" "$backup_dir/shell"
+
+  {
+    printf "created_at=%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf "codex_home=%s\n" "$CODEX_HOME"
+    printf "project_dir=%s\n" "$PROJECT_DIR"
+    printf "shell_rc=%s\n" "$shell_rc"
+    printf "restore_hint=%s --restore %s\n" "$0" "$backup_dir"
+  } > "$backup_dir/MANIFEST.txt"
+
+  copy_if_exists "$CONFIG_FILE" "$backup_dir/codex/config.toml"
+  copy_if_exists "$PRIVATE_ENV_FILE" "$backup_dir/codex/private.env"
+  copy_if_exists "$CODEX_HOME/rules/default.rules" "$backup_dir/codex/rules/default.rules"
+  copy_if_exists "$PROJECT_DIR/AGENTS.md" "$backup_dir/project/AGENTS.md"
+  copy_if_exists "$shell_rc" "$backup_dir/shell/$(basename "$shell_rc")"
+
+  if [[ -f "$CODEX_HOME/state_5.sqlite" ]]; then
+    mkdir -p "$backup_dir/codex"
+    if command_exists sqlite3; then
+      sqlite3 "$CODEX_HOME/state_5.sqlite" ".timeout 5000" ".backup '$backup_dir/codex/state_5.sqlite'" || copy_if_exists "$CODEX_HOME/state_5.sqlite" "$backup_dir/codex/state_5.sqlite"
+    else
+      copy_if_exists "$CODEX_HOME/state_5.sqlite" "$backup_dir/codex/state_5.sqlite"
+    fi
+  fi
+
+  printf "%s\n" "$backup_dir" > "$CODEX_HOME/.last-install-backup"
+  log_ok "Restore snapshot created: $backup_dir"
+  log_info "Restore with: $0 --restore '$backup_dir'"
+}
+
+restore_install_backup() {
+  local backup_dir="$1"
+  [[ -d "$backup_dir" ]] || fail "Restore backup not found: $backup_dir"
+  log_step "Restore" "Restore Codex files from $backup_dir"
+  run mkdir -p "$CODEX_HOME" "$CODEX_HOME/rules" "$PROJECT_DIR"
+  [[ -f "$backup_dir/codex/config.toml" ]] && run cp "$backup_dir/codex/config.toml" "$CONFIG_FILE"
+  [[ -f "$backup_dir/codex/private.env" ]] && run cp "$backup_dir/codex/private.env" "$PRIVATE_ENV_FILE"
+  [[ -f "$backup_dir/codex/private.env" && "$DRY_RUN" != "1" ]] && chmod 600 "$PRIVATE_ENV_FILE" 2>/dev/null || true
+  [[ -f "$backup_dir/codex/rules/default.rules" ]] && run cp "$backup_dir/codex/rules/default.rules" "$CODEX_HOME/rules/default.rules"
+  if [[ -f "$backup_dir/codex/state_5.sqlite" ]]; then
+    if [[ "$DRY_RUN" == "1" ]]; then
+      run cp "$backup_dir/codex/state_5.sqlite" "$CODEX_HOME/state_5.sqlite"
+      run rm -f "$CODEX_HOME/state_5.sqlite-wal" "$CODEX_HOME/state_5.sqlite-shm"
+    else
+      rm -f "$CODEX_HOME/state_5.sqlite-wal" "$CODEX_HOME/state_5.sqlite-shm"
+      cp "$backup_dir/codex/state_5.sqlite" "$CODEX_HOME/state_5.sqlite"
+    fi
+  fi
+  [[ -f "$backup_dir/project/AGENTS.md" ]] && run cp "$backup_dir/project/AGENTS.md" "$PROJECT_DIR/AGENTS.md"
+  log_ok "Restore completed from: $backup_dir"
 }
 
 preserve_config_tail() {
@@ -641,9 +738,14 @@ setup_shell_rc() {
 
 main() {
   print_banner
+  detect_platform
+  if [[ -n "$RESTORE_FROM" ]]; then
+    restore_install_backup "$RESTORE_FROM"
+    return 0
+  fi
+
   validate_env_key
   validate_required_inputs
-  detect_platform
   log_step "1/7" "Inspect system and bootstrap settings"
   log_info "OS: $OS_NAME ($OS_ID/$ARCH_NAME)"
   log_info "Shell: ${SHELL_NAME:-unknown}, rc: $(detect_shell_rc)"
@@ -659,6 +761,7 @@ main() {
   log_info "Subagents: max_threads=$AGENTS_MAX_THREADS max_depth=$AGENTS_MAX_DEPTH job_timeout_s=$AGENTS_JOB_MAX_RUNTIME_SECONDS"
   log_info "Provider retries: request=$REQUEST_MAX_RETRIES stream=$STREAM_MAX_RETRIES idle_timeout_ms=$STREAM_IDLE_TIMEOUT_MS"
   log_info "Security profile: $SECURITY_PROFILE"
+  log_info "Install backup: $INSTALL_BACKUP"
   log_info "Provider history sync: $SYNC_PROVIDER_HISTORY"
   log_info "Base URL: $(mask_url "$API_BASE_URL")"
   [[ -n "$API_KEY" ]] && log_info "API key: $(mask_secret "$API_KEY")"
@@ -667,6 +770,7 @@ main() {
   log_step "2/7" "Load profile and template assets"
   source_dir="$(download_source)"
   load_profile "$source_dir"
+  create_install_backup
   log_step "3/7" "Install or verify Codex CLI"
   install_codex
   write_private_env
