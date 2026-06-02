@@ -4,7 +4,7 @@
 param(
     [string]$Token = $(if ($env:CODEX_TOKEN) { $env:CODEX_TOKEN } else { $env:OPENAI_API_KEY }),
     [string]$BaseUrl = $(if ($env:CODEX_API_URL) { $env:CODEX_API_URL } elseif ($env:OPENAI_BASE_URL) { $env:OPENAI_BASE_URL } else { "" }),
-    [string]$ProviderId = $(if ($env:CODEX_PROVIDER_ID) { $env:CODEX_PROVIDER_ID } else { "custom" }),
+    [string]$ProviderId = "custom",
     [string]$ProviderEnvKey = $(if ($env:CODEX_PROVIDER_ENV_KEY) { $env:CODEX_PROVIDER_ENV_KEY } else { "CODEX_API_KEY" }),
     [string]$Model = $(if ($env:CODEX_MODEL) { $env:CODEX_MODEL } else { "gpt-5.5" }),
     [string]$ReasoningEffort = $(if ($env:CODEX_REASONING_EFFORT) { $env:CODEX_REASONING_EFFORT } else { "high" }),
@@ -69,7 +69,6 @@ Usage:
 Environment:
   CODEX_TOKEN or OPENAI_API_KEY       API key written to the provider env key
   CODEX_API_URL or OPENAI_BASE_URL    API base URL written to [model_providers.custom]
-  CODEX_PROVIDER_ID                   Provider id (default: custom)
   CODEX_PROVIDER_ENV_KEY              Provider env key (default: CODEX_API_KEY)
   CODEX_MODEL                         Default model (default: gpt-5.5)
   CODEX_REASONING_EFFORT              Reasoning effort (default: high)
@@ -466,6 +465,9 @@ function Main {
     Write-Step "1/7" "Inspect system and bootstrap settings"
     Write-Info "PowerShell: $($PSVersionTable.PSVersion)"
     Write-Info "Provider: $ProviderId"
+    if ($env:CODEX_PROVIDER_ID -and $env:CODEX_PROVIDER_ID -ne $ProviderId) {
+        Write-Warn "Ignoring CODEX_PROVIDER_ID; stable Codex provider is fixed to $ProviderId"
+    }
     Write-Info "Provider env key: $ProviderEnvKey"
     Write-Info "Model: $Model"
     Write-Info "Reasoning effort: $ReasoningEffort"

@@ -13,7 +13,7 @@ CONFIG_FILE="$CODEX_HOME/config.toml"
 PRIVATE_ENV_FILE="${CODEX_PRIVATE_ENV_FILE:-$CODEX_HOME/private.env}"
 API_BASE_URL="${CODEX_API_URL:-${OPENAI_BASE_URL:-}}"
 API_KEY="${CODEX_TOKEN:-${OPENAI_API_KEY:-}}"
-PROVIDER_ID="${CODEX_PROVIDER_ID:-custom}"
+PROVIDER_ID="custom"
 PROVIDER_ENV_KEY="${CODEX_PROVIDER_ENV_KEY:-CODEX_API_KEY}"
 MODEL="${CODEX_MODEL:-gpt-5.5}"
 REASONING_EFFORT="${CODEX_REASONING_EFFORT:-high}"
@@ -102,7 +102,6 @@ Options:
 Environment:
   CODEX_TOKEN or OPENAI_API_KEY       API key written to the provider env key
   CODEX_API_URL or OPENAI_BASE_URL    API base URL written to [model_providers.custom]
-  CODEX_PROVIDER_ID                   Provider id (default: ${PROVIDER_ID})
   CODEX_PROVIDER_ENV_KEY              Provider env key (default: ${PROVIDER_ENV_KEY})
   CODEX_MODEL                         Default model (default: ${MODEL})
   CODEX_REASONING_EFFORT              Reasoning effort (default: ${REASONING_EFFORT})
@@ -751,6 +750,7 @@ main() {
   log_info "Shell: ${SHELL_NAME:-unknown}, rc: $(detect_shell_rc)"
   log_info "Profile: $BOOTSTRAP_PROFILE"
   log_info "Provider: $PROVIDER_ID"
+  [[ -n "${CODEX_PROVIDER_ID:-}" && "${CODEX_PROVIDER_ID:-}" != "$PROVIDER_ID" ]] && log_warn "Ignoring CODEX_PROVIDER_ID; stable Codex provider is fixed to $PROVIDER_ID"
   log_info "Provider env key: $PROVIDER_ENV_KEY"
   log_info "Model: $MODEL"
   log_info "Reasoning effort: $REASONING_EFFORT"

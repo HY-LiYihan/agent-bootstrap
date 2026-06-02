@@ -40,7 +40,7 @@ function readProvider(codexHome) {
   return parseTomlString(text, 'model_provider') || 'custom';
 }
 
-function walkRollouts(root) {
+function walkSessionFiles(root) {
   const files = [];
   if (!exists(root)) return files;
   const stack = [root];
@@ -55,7 +55,7 @@ function walkRollouts(root) {
     for (const entry of entries) {
       const target = path.join(current, entry.name);
       if (entry.isDirectory()) stack.push(target);
-      else if (entry.isFile() && /^rollout-.*\.jsonl$/.test(entry.name)) files.push(target);
+      else if (entry.isFile() && (/^rollout-.*\.jsonl$/.test(entry.name) || /\.json$/.test(entry.name))) files.push(target);
     }
   }
   return files.sort();
@@ -76,24 +76,29 @@ function copyIfExists(file, destDir, label, manifest, dryRun) {
   }
 }
 
-function createBackup(codexHome, changedRollouts, dryRun) {
+function createBackup(codexHome, changedSessionFiles, sqliteFiles, dryRun) {
   const id = timestamp();
   const dir = path.join(codexHome, 'backups_state', 'provider-sync', id);
   const manifest = {
     id,
     createdAt: new Date().toISOString(),
-    changedRollouts: changedRollouts.length,
+    changedSessionFiles: changedSessionFiles.length,
+    sqliteFiles: sqliteFiles.length,
     files: [],
   };
 
   if (!dryRun) mkdirp(dir);
   copyIfExists(path.join(codexHome, 'config.toml'), dir, 'config.toml', manifest, dryRun);
-  ['state_5.sqlite', 'state_5.sqlite-wal', 'state_5.sqlite-shm'].forEach((name) => {
-    copyIfExists(path.join(codexHome, name), dir, name, manifest, dryRun);
-  });
 
-  for (const file of changedRollouts) {
-    const backupPath = path.join(dir, 'rollouts', relativeBackupName(codexHome, file));
+  for (const file of sqliteFiles) {
+    const relative = relativeBackupName(codexHome, file);
+    copyIfExists(file, dir, path.join('sqlite', relative), manifest, dryRun);
+    copyIfExists(`${file}-wal`, dir, path.join('sqlite', `${relative}-wal`), manifest, dryRun);
+    copyIfExists(`${file}-shm`, dir, path.join('sqlite', `${relative}-shm`), manifest, dryRun);
+  }
+
+  for (const file of changedSessionFiles) {
+    const backupPath = path.join(dir, 'sessions', relativeBackupName(codexHome, file));
     manifest.files.push({ target: file, backup: backupPath });
     if (!dryRun) {
       mkdirp(path.dirname(backupPath));
@@ -108,33 +113,91 @@ function createBackup(codexHome, changedRollouts, dryRun) {
   return { id, dir, manifest };
 }
 
-function plannedRolloutChanges(codexHome, provider) {
+function updateProviderFields(value, provider) {
+  if (!value || typeof value !== 'object') return 0;
+  let changed = 0;
+  if (Object.prototype.hasOwnProperty.call(value, 'model_provider') && value.model_provider !== provider) {
+    value.model_provider = provider;
+    changed += 1;
+  }
+  for (const item of Object.values(value)) {
+    changed += updateProviderFields(item, provider);
+  }
+  return changed;
+}
+
+function preserveLineEnding(text) {
+  if (text.endsWith('\r\n')) return '\r\n';
+  if (text.endsWith('\n')) return '\n';
+  return '';
+}
+
+function planJsonlChange(file, text, provider) {
+  const lineEnding = preserveLineEnding(text);
+  const body = lineEnding ? text.slice(0, -lineEnding.length) : text;
+  const lines = body.split(/\r?\n/);
+  let changedFields = 0;
+  let changedLines = 0;
+  const nextLines = lines.map((line) => {
+    if (!line) return line;
+    let item;
+    try {
+      item = JSON.parse(line);
+    } catch {
+      return line;
+    }
+    const fieldCount = updateProviderFields(item, provider);
+    if (!fieldCount) return line;
+    changedFields += fieldCount;
+    changedLines += 1;
+    return JSON.stringify(item);
+  });
+  if (!changedFields) return null;
+  return {
+    file,
+    changedFields,
+    changedLines,
+    nextText: `${nextLines.join('\n')}${lineEnding}`,
+  };
+}
+
+function planJsonChange(file, text, provider) {
+  let item;
+  try {
+    item = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const changedFields = updateProviderFields(item, provider);
+  if (!changedFields) return null;
+  const lineEnding = preserveLineEnding(text) || '\n';
+  return {
+    file,
+    changedFields,
+    changedLines: 1,
+    nextText: `${JSON.stringify(item, null, 2)}${lineEnding}`,
+  };
+}
+
+function plannedSessionChanges(codexHome, provider) {
   const roots = [
     path.join(codexHome, 'sessions'),
     path.join(codexHome, 'archived_sessions'),
   ];
   const changes = [];
-  for (const file of roots.flatMap(walkRollouts)) {
+  for (const file of roots.flatMap(walkSessionFiles)) {
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
     if (!text) continue;
-    const newlineIndex = text.indexOf('\n');
-    const firstLine = newlineIndex === -1 ? text : text.slice(0, newlineIndex);
-    const rest = newlineIndex === -1 ? '' : text.slice(newlineIndex);
-    let meta;
-    try { meta = JSON.parse(firstLine); } catch { continue; }
-    if (meta?.type !== 'session_meta') continue;
-    if (!meta.payload || typeof meta.payload !== 'object') continue;
-    if (meta.payload.model_provider === provider) continue;
-    const previousProvider = meta.payload.model_provider || '';
-    meta.payload.model_provider = provider;
-    const nextFirstLine = JSON.stringify(meta);
-    changes.push({ file, previousProvider, nextText: `${nextFirstLine}${rest}` });
+    const change = file.endsWith('.jsonl')
+      ? planJsonlChange(file, text, provider)
+      : planJsonChange(file, text, provider);
+    if (change) changes.push(change);
   }
   return changes;
 }
 
-function applyRolloutChanges(changes, dryRun) {
+function applySessionChanges(changes, dryRun) {
   for (const change of changes) {
     if (dryRun) continue;
     let mode;
@@ -152,38 +215,95 @@ function escapeSql(value) {
   return String(value).replace(/'/g, "''");
 }
 
-function runSqlite(dbFile, provider, dryRun, logger) {
-  if (!exists(dbFile)) return { status: 'missing', changed: 0 };
-  const sqlitePath = 'sqlite3';
-  const probe = spawnSync(sqlitePath, ['--version'], { encoding: 'utf8' });
+function quoteSqlIdentifier(value) {
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+function findSqliteFiles(codexHome) {
+  const files = [];
+  const seen = new Set();
+  const add = (file) => {
+    if (!/\.(sqlite|sqlite3|db)$/.test(file)) return;
+    if (seen.has(file)) return;
+    seen.add(file);
+    files.push(file);
+  };
+  const scanDir = (dir) => {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const target = path.join(dir, entry.name);
+      if (entry.isFile()) add(target);
+    }
+  };
+  scanDir(codexHome);
+  scanDir(path.join(codexHome, 'sqlite'));
+  return files.sort();
+}
+
+function sqliteAvailable(logger) {
+  const probe = spawnSync('sqlite3', ['--version'], { encoding: 'utf8' });
   if (probe.error && probe.error.code === 'ENOENT') {
-    logger.warn('sqlite3 not found; skipped state_5.sqlite provider sync');
-    return { status: 'skipped', changed: 0 };
+    logger.warn('sqlite3 not found; skipped SQLite provider sync');
+    return false;
   }
+  return true;
+}
 
-  const schema = spawnSync(sqlitePath, [dbFile, "SELECT COUNT(*) FROM pragma_table_info('threads') WHERE name='model_provider';"], { encoding: 'utf8' });
-  if (schema.status !== 0) {
-    logger.warn('state_5.sqlite is unavailable or locked; skipped SQLite provider sync');
-    return { status: 'skipped', changed: 0 };
+function planSqliteChanges(codexHome, provider, logger) {
+  if (!sqliteAvailable(logger)) return { status: 'skipped', changed: 0, files: [], updates: [] };
+  const updates = [];
+  let changed = 0;
+  for (const dbFile of findSqliteFiles(codexHome)) {
+    const tableResult = spawnSync('sqlite3', [
+      dbFile,
+      "SELECT DISTINCT m.name FROM sqlite_master AS m JOIN pragma_table_info(m.name) AS p WHERE m.type='table' AND p.name='model_provider';",
+    ], { encoding: 'utf8' });
+    if (tableResult.status !== 0) {
+      logger.warn(`${path.basename(dbFile)} is unavailable or locked; skipped SQLite provider sync for this file`);
+      continue;
+    }
+    const tables = String(tableResult.stdout).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    for (const table of tables) {
+      const tableName = quoteSqlIdentifier(table);
+      const countSql = `SELECT COUNT(*) FROM ${tableName} WHERE COALESCE(model_provider, '') <> '${escapeSql(provider)}';`;
+      const countResult = spawnSync('sqlite3', [dbFile, countSql], { encoding: 'utf8' });
+      if (countResult.status !== 0) {
+        logger.warn(`${path.basename(dbFile)} is unavailable or locked; skipped SQLite provider sync for table ${table}`);
+        continue;
+      }
+      const rowCount = Number(String(countResult.stdout).trim() || 0);
+      if (!rowCount) continue;
+      updates.push({ dbFile, table, changed: rowCount });
+      changed += rowCount;
+    }
   }
-  if (String(schema.stdout).trim() !== '1') return { status: 'no-column', changed: 0 };
+  return {
+    status: 'ok',
+    changed,
+    files: [...new Set(updates.map((item) => item.dbFile))],
+    updates,
+  };
+}
 
-  const countSql = `SELECT COUNT(*) FROM threads WHERE COALESCE(model_provider, '') <> '${escapeSql(provider)}';`;
-  const countResult = spawnSync(sqlitePath, [dbFile, countSql], { encoding: 'utf8' });
-  if (countResult.status !== 0) {
-    logger.warn('state_5.sqlite is unavailable or locked; skipped SQLite provider sync');
-    return { status: 'skipped', changed: 0 };
+function applySqliteChanges(plan, provider, dryRun, logger) {
+  if (dryRun || !plan.updates?.length) return { status: plan.status, changed: plan.changed };
+  let changed = 0;
+  for (const update of plan.updates) {
+    const tableName = quoteSqlIdentifier(update.table);
+    const sql = `UPDATE ${tableName} SET model_provider = '${escapeSql(provider)}' WHERE COALESCE(model_provider, '') <> '${escapeSql(provider)}';`;
+    const result = spawnSync('sqlite3', [update.dbFile, sql], { encoding: 'utf8' });
+    if (result.status !== 0) {
+      logger.warn(`${path.basename(update.dbFile)} is unavailable or locked; skipped SQLite provider sync for table ${update.table}`);
+      continue;
+    }
+    changed += update.changed;
   }
-  const changed = Number(String(countResult.stdout).trim() || 0);
-  if (!changed || dryRun) return { status: 'ok', changed };
-
-  const updateSql = `UPDATE threads SET model_provider = '${escapeSql(provider)}' WHERE COALESCE(model_provider, '') <> '${escapeSql(provider)}';`;
-  const updateResult = spawnSync(sqlitePath, [dbFile, updateSql], { encoding: 'utf8' });
-  if (updateResult.status !== 0) {
-    logger.warn('state_5.sqlite is unavailable or locked; skipped SQLite provider sync');
-    return { status: 'skipped', changed: 0 };
-  }
-  return { status: 'ok', changed };
+  return { status: plan.status, changed };
 }
 
 function defaultLogger(quiet = false) {
@@ -206,16 +326,17 @@ function syncProviderHistory(options = {}) {
   }
 
   const provider = options.provider || readProvider(codexHome);
-  const changes = plannedRolloutChanges(codexHome, provider);
-  const sqliteDb = path.join(codexHome, 'state_5.sqlite');
-  const shouldBackup = changes.length > 0 || exists(sqliteDb);
-  const backup = shouldBackup ? createBackup(codexHome, changes.map((item) => item.file), dryRun) : null;
+  const changes = plannedSessionChanges(codexHome, provider);
+  const sqlitePlan = planSqliteChanges(codexHome, provider, logger);
+  const shouldBackup = changes.length > 0 || sqlitePlan.files.length > 0;
+  const backup = shouldBackup ? createBackup(codexHome, changes.map((item) => item.file), sqlitePlan.files, dryRun) : null;
 
-  applyRolloutChanges(changes, dryRun);
-  const sqlite = runSqlite(sqliteDb, provider, dryRun, logger);
+  applySessionChanges(changes, dryRun);
+  const sqlite = applySqliteChanges(sqlitePlan, provider, dryRun, logger);
 
   const action = dryRun ? 'would sync' : 'synced';
-  logger.ok(`${action} provider history to "${provider}": rollouts=${changes.length}, sqlite=${sqlite.changed}`);
+  const changedFields = changes.reduce((total, item) => total + item.changedFields, 0);
+  logger.ok(`${action} provider history to "${provider}": session_files=${changes.length}, session_fields=${changedFields}, sqlite=${sqlite.changed}`);
   if (backup) {
     logger.info(`${dryRun ? 'Would create' : 'Created'} provider-sync backup: ${backup.dir}`);
   }
@@ -223,6 +344,8 @@ function syncProviderHistory(options = {}) {
   return {
     provider,
     rolloutChanged: changes.length,
+    sessionFilesChanged: changes.length,
+    sessionFieldsChanged: changedFields,
     sqliteChanged: sqlite.changed,
     sqliteStatus: sqlite.status,
     backupDir: backup ? backup.dir : '',

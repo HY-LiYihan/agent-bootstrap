@@ -30,6 +30,7 @@ jobs:
         run: |
           tmp="$(mktemp -d)"
           CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
+          grep -nE 'model_provider = "custom"' "$tmp/codex/config.toml"
           grep -nE 'web_search = "live"' "$tmp/codex/config.toml"
           grep -nE 'model_verbosity = "medium"' "$tmp/codex/config.toml"
           grep -nE 'model_reasoning_summary = "auto"' "$tmp/codex/config.toml"
@@ -37,6 +38,13 @@ jobs:
           grep -nE 'request_max_retries = 4' "$tmp/codex/config.toml"
           grep -nE 'stream_max_retries = 5' "$tmp/codex/config.toml"
           grep -nE 'stream_idle_timeout_ms = 300000' "$tmp/codex/config.toml"
+      - name: Codex provider id is fixed
+        run: |
+          tmp="$(mktemp -d)"
+          CODEX_PROVIDER_ID=other CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes | tee "$tmp/out"
+          grep -nE 'Ignoring CODEX_PROVIDER_ID' "$tmp/out"
+          grep -nE 'model_provider = "custom"' "$tmp/codex/config.toml"
+          grep -nE '^\[model_providers\."custom"\]' "$tmp/codex/config.toml"
       - name: Codex config preserves plugin tail
         run: |
           tmp="$(mktemp -d)"
@@ -105,15 +113,28 @@ jobs:
           model_provider = "custom"
           TOML
           rollout="$tmp/sessions/2026/05/14/rollout-test.jsonl"
-          printf '%s\n%s\n' '{"type":"session_meta","payload":{"model_provider":"sss","id":"abc"}}' '{"type":"user_message","payload":{"text":"keep me"}}' > "$rollout"
+          printf '%s\n%s\n%s\n%s\n' \
+            '{"type":"session_meta","payload":{"model_provider":"sss","id":"abc"}}' \
+            '{"type":"assistant_message","payload":{"model_provider":"sss","text":"also update me"}}' \
+            '{"type":"user_message","payload":{"text":"keep me"}}' \
+            'not-json but keep me' > "$rollout"
+          json_file="$tmp/sessions/2026/05/14/session-test.json"
+          printf '%s\n' '{"payload":{"model_provider":"sss","nested":{"model_provider":"legacy"},"text":"keep json text"}}' > "$json_file"
           sqlite3 "$tmp/state_5.sqlite" 'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT); INSERT INTO threads VALUES ("t1", "sss");'
           node shared/codex-provider-sync.js --codex-home "$tmp"
-          node - "$rollout" <<'NODE'
+          node - "$rollout" "$json_file" <<'NODE'
           const fs = require('node:fs');
           const lines = fs.readFileSync(process.argv[2], 'utf8').split('\n');
           const first = JSON.parse(lines[0]);
-          if (first.payload.model_provider !== 'custom') throw new Error('rollout provider was not synced');
-          if (lines[1] !== '{"type":"user_message","payload":{"text":"keep me"}}') throw new Error('non-metadata rollout line changed');
+          const second = JSON.parse(lines[1]);
+          if (first.payload.model_provider !== 'custom') throw new Error('metadata provider was not synced');
+          if (second.payload.model_provider !== 'custom') throw new Error('event provider was not synced');
+          if (lines[2] !== '{"type":"user_message","payload":{"text":"keep me"}}') throw new Error('provider-less rollout line changed');
+          if (lines[3] !== 'not-json but keep me') throw new Error('malformed rollout line changed');
+          const json = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+          if (json.payload.model_provider !== 'custom') throw new Error('json provider was not synced');
+          if (json.payload.nested.model_provider !== 'custom') throw new Error('nested json provider was not synced');
+          if (json.payload.text !== 'keep json text') throw new Error('json text changed');
           NODE
           test "$(sqlite3 "$tmp/state_5.sqlite" 'SELECT model_provider FROM threads WHERE id="t1";')" = custom
           test -d "$tmp/backups_state/provider-sync"
@@ -166,6 +187,20 @@ jobs:
           $env:CODEX_API_URL = 'https://example.test/v1'
           $env:CODEX_SECURITY_PROFILE = 'safe'
           .\agents\codex\install.ps1 -LocalSource . -DryRun -SkipCodexInstall -SkipProfileUpdate
+      - name: Codex PowerShell provider id is fixed
+        shell: pwsh
+        run: |
+          $tmp = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP ([Guid]::NewGuid().ToString('N')))
+          $codex = Join-Path $tmp.FullName 'codex'
+          $project = Join-Path $tmp.FullName 'project'
+          $env:CODEX_TOKEN = 'test-token'
+          $env:CODEX_API_URL = 'https://example.test/v1'
+          $env:CODEX_PROVIDER_ID = 'other'
+          .\agents\codex\install.ps1 -LocalSource . -CodexHome $codex -ProjectDir $project -SkipCodexInstall -SkipProfileUpdate -Yes | Tee-Object -FilePath (Join-Path $tmp.FullName 'out.txt')
+          Select-String -Path (Join-Path $tmp.FullName 'out.txt') -Pattern 'Ignoring CODEX_PROVIDER_ID'
+          Select-String -Path (Join-Path $codex 'config.toml') -Pattern 'model_provider = "custom"'
+          Select-String -Path (Join-Path $codex 'config.toml') -Pattern '\[model_providers\."custom"\]'
+          Remove-Item Env:\CODEX_PROVIDER_ID
       - name: Codex PowerShell backup and restore
         shell: pwsh
         run: |
