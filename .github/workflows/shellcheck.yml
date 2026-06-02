@@ -112,7 +112,19 @@ jobs:
       - name: Default agent entrypoint dry run
         run: AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_BOOTSTRAP_LOCAL_SOURCE=. AGENT_BOOTSTRAP_INSTALL_ARGS='--dry-run --skip-codex-install --skip-shell-rc --yes' bash -c '. ./agent'
       - name: Claude Code dispatcher dry run
-        run: AGENT=claudecode AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/anthropic ./install.sh --local . --dry-run --skip-claude-install
+        run: AGENT=claudecode AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/anthropic AGENT_MODEL=claude-sonnet-4-5 ./install.sh --local . --dry-run --skip-claude-install | grep -n 'Would set Claude default model: claude-sonnet-4-5'
+      - name: Claude Code model config generation
+        run: |
+          tmp="$(mktemp -d)"
+          HOME="$tmp" CLAUDE_HOME="$tmp/.claude" CLAUDE_TOKEN=test-token CLAUDE_API_URL=https://example.test/anthropic CLAUDE_MODEL=claude-sonnet-4-5 ./agents/claudecode/install.sh --skip-install
+          node - "$tmp/.claude/settings.json" <<'NODE'
+          const fs = require('node:fs');
+          const settings = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (settings.model !== 'claude-sonnet-4-5') throw new Error('Claude settings.model missing');
+          if (settings.env.ANTHROPIC_MODEL !== 'claude-sonnet-4-5') throw new Error('Claude ANTHROPIC_MODEL missing');
+          if (settings.env.ANTHROPIC_AUTH_TOKEN !== 'test-token') throw new Error('Claude token missing');
+          if (settings.env.ANTHROPIC_BASE_URL !== 'https://example.test/anthropic') throw new Error('Claude base URL missing');
+          NODE
       - name: OpenClaw dispatcher dry run
         run: AGENT=openclaw AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/anthropic ./install.sh --local . --dry-run
       - name: Hermes dispatcher dry run
@@ -253,7 +265,9 @@ jobs:
         run: |
           $env:CLAUDE_CLIENT_TOKEN = 'test-token'
           $env:CLAUDE_API_URL = 'https://example.test/anthropic'
-          .\agents\claudecode\install.ps1 -DryRun -SkipInstall
+          $env:CLAUDE_MODEL = 'claude-sonnet-4-5'
+          .\agents\claudecode\install.ps1 -DryRun -SkipInstall *>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'claude-model.txt')
+          Select-String -Path (Join-Path $env:RUNNER_TEMP 'claude-model.txt') -Pattern 'Would set Claude default model: claude-sonnet-4-5'
       - name: OpenClaw PowerShell dry run
         shell: pwsh
         run: |

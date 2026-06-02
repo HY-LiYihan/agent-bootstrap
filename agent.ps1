@@ -100,8 +100,9 @@ if ($agent -eq 'codex') {
     $token = Ask-Value 'API token' $(if ($env:AGENT_TOKEN) { $env:AGENT_TOKEN } elseif ($env:CLAUDE_TOKEN) { $env:CLAUDE_TOKEN } elseif ($env:CLAUDE_CLIENT_TOKEN) { $env:CLAUDE_CLIENT_TOKEN } else { '' })
     Write-Host '[INFO] Claude API base URL is required; no default is bundled' -ForegroundColor Cyan
     $baseUrl = Ask-Value 'Claude API base URL' $(if ($env:AGENT_BASE_URL) { $env:AGENT_BASE_URL } elseif ($env:CLAUDE_API_URL) { $env:CLAUDE_API_URL } else { '' })
+    $model = Ask-Value 'Claude model (optional)' $(if ($env:AGENT_MODEL) { $env:AGENT_MODEL } elseif ($env:CLAUDE_MODEL) { $env:CLAUDE_MODEL } elseif ($env:ANTHROPIC_MODEL) { $env:ANTHROPIC_MODEL } else { '' })
     Assert-TokenAndBaseUrl -Token $token -BaseUrl $baseUrl
-    Invoke-AgentInstaller -Agent 'claudecode' -Token $token -BaseUrl $baseUrl
+    Invoke-AgentInstaller -Agent 'claudecode' -Token $token -BaseUrl $baseUrl -Model $model
 } elseif ($agent -eq 'openclaw') {
     $token = Ask-Value 'API token' $(if ($env:AGENT_TOKEN) { $env:AGENT_TOKEN } elseif ($env:OPENCLAW_TOKEN) { $env:OPENCLAW_TOKEN } else { '' })
     Write-Host '[INFO] OpenClaw base URL is required; no default is bundled' -ForegroundColor Cyan
@@ -127,13 +128,14 @@ if ($agent -eq 'codex') {
     $sharedBase = Ask-Value 'Shared non-Codex base URL' $(if ($env:AGENT_BASE_URL) { $env:AGENT_BASE_URL } else { '' })
     Write-Host '[INFO] Codex API base URL is required; no default is bundled' -ForegroundColor Cyan
     $codexBase = Ask-Value 'Codex API base URL' $(if ($env:CODEX_API_URL) { $env:CODEX_API_URL } else { '' })
+    $claudeModel = Ask-Value 'Claude model (optional)' $(if ($env:CLAUDE_MODEL) { $env:CLAUDE_MODEL } elseif ($env:ANTHROPIC_MODEL) { $env:ANTHROPIC_MODEL } else { '' })
     $model = Ask-Value 'OpenClaw model' $(if ($env:AGENT_MODEL) { $env:AGENT_MODEL } elseif ($env:OPENCLAW_MODEL) { $env:OPENCLAW_MODEL } else { 'anthropic/claude-opus-4-7' })
     $hermesModel = Ask-Value 'Hermes model' $(if ($env:HERMES_MODEL) { $env:HERMES_MODEL } else { 'gpt-5.5' })
     Assert-TokenAndBaseUrl -Token $sharedToken -BaseUrl $sharedBase
     Assert-TokenAndBaseUrl -Token $sharedToken -BaseUrl $codexBase
 
     Invoke-AgentInstaller -Agent 'codex' -Token $sharedToken -BaseUrl $codexBase
-    Invoke-AgentInstaller -Agent 'claudecode' -Token $sharedToken -BaseUrl $sharedBase
+    Invoke-AgentInstaller -Agent 'claudecode' -Token $sharedToken -BaseUrl $sharedBase -Model $claudeModel
     Invoke-AgentInstaller -Agent 'openclaw' -Token $sharedToken -BaseUrl $sharedBase -Model $model
     Invoke-AgentInstaller -Agent 'hermes' -Token $sharedToken -BaseUrl $sharedBase -Model $hermesModel
 }

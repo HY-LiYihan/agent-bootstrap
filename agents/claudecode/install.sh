@@ -6,6 +6,7 @@ IFS=$'\n\t'
 
 CLAUDE_TOKEN_VALUE="${CLAUDE_TOKEN:-${CLAUDE_CLIENT_TOKEN:-}}"
 CLAUDE_BASE_URL="${CLAUDE_API_URL:-}"
+CLAUDE_MODEL_VALUE="${CLAUDE_MODEL:-${ANTHROPIC_MODEL:-${AGENT_MODEL:-}}}"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 SETTINGS_FILE="$CLAUDE_HOME/settings.json"
 CLAUDE_JSON_FILE="${CLAUDE_JSON_FILE:-$HOME/.claude.json}"
@@ -28,7 +29,7 @@ while [[ $# -gt 0 ]]; do
     --skip-claude-install|--skip-install) SKIP_INSTALL=1; shift ;;
     --no-bun) NO_BUN=1; shift ;;
     -h|--help)
-      echo "Usage: CLAUDE_TOKEN=... CLAUDE_API_URL=... agents/claudecode/install.sh"
+      echo "Usage: CLAUDE_TOKEN=... CLAUDE_API_URL=... CLAUDE_MODEL=... agents/claudecode/install.sh"
       exit 0
       ;;
     *) fail "Unknown option: $1" ;;
@@ -115,16 +116,18 @@ write_claude_settings() {
 
   if [[ "$DRY_RUN" == "1" ]]; then
     info "Would write Claude settings to $SETTINGS_FILE with token $(mask_secret "$CLAUDE_TOKEN_VALUE")"
+    [[ -n "$CLAUDE_MODEL_VALUE" ]] && info "Would set Claude default model: $CLAUDE_MODEL_VALUE"
     return 0
   fi
 
   if command_exists python3; then
-    SETTINGS_FILE="$SETTINGS_FILE" CLAUDE_JSON_FILE="$CLAUDE_JSON_FILE" CLAUDE_TOKEN_VALUE="$CLAUDE_TOKEN_VALUE" CLAUDE_BASE_URL="$CLAUDE_BASE_URL" python3 - <<'PY'
+    SETTINGS_FILE="$SETTINGS_FILE" CLAUDE_JSON_FILE="$CLAUDE_JSON_FILE" CLAUDE_TOKEN_VALUE="$CLAUDE_TOKEN_VALUE" CLAUDE_BASE_URL="$CLAUDE_BASE_URL" CLAUDE_MODEL_VALUE="$CLAUDE_MODEL_VALUE" python3 - <<'PY'
 import json, os
 settings_file = os.environ['SETTINGS_FILE']
 claude_json_file = os.environ['CLAUDE_JSON_FILE']
 token = os.environ['CLAUDE_TOKEN_VALUE']
 base_url = os.environ['CLAUDE_BASE_URL']
+model = os.environ.get('CLAUDE_MODEL_VALUE', '')
 try:
     with open(settings_file, 'r', encoding='utf-8') as f:
         settings = json.load(f)
@@ -138,6 +141,9 @@ settings['env'].update({
     'CLAUDE_CODE_DISABLE_TERMINAL_TITLE': '1',
     'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
 })
+if model:
+    settings['model'] = model
+    settings['env']['ANTHROPIC_MODEL'] = model
 settings.setdefault('permissions', {'allow': [], 'deny': []})
 os.makedirs(os.path.dirname(settings_file), exist_ok=True)
 with open(settings_file, 'w', encoding='utf-8') as f:
@@ -152,7 +158,23 @@ with open(claude_json_file, 'w', encoding='utf-8') as f:
     json.dump(claude_json, f, indent=2)
 PY
   else
-    cat > "$SETTINGS_FILE" <<JSON
+    if [[ -n "$CLAUDE_MODEL_VALUE" ]]; then
+      cat > "$SETTINGS_FILE" <<JSON
+{
+  "model": "$CLAUDE_MODEL_VALUE",
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "$CLAUDE_TOKEN_VALUE",
+    "ANTHROPIC_BASE_URL": "$CLAUDE_BASE_URL",
+    "ANTHROPIC_MODEL": "$CLAUDE_MODEL_VALUE",
+    "API_TIMEOUT_MS": 600000,
+    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "permissions": { "allow": [], "deny": [] }
+}
+JSON
+    else
+      cat > "$SETTINGS_FILE" <<JSON
 {
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "$CLAUDE_TOKEN_VALUE",
@@ -164,6 +186,7 @@ PY
   "permissions": { "allow": [], "deny": [] }
 }
 JSON
+    fi
     printf '{"hasCompletedOnboarding":true}\n' > "$CLAUDE_JSON_FILE"
   fi
   ok "Claude settings configured: $SETTINGS_FILE"
@@ -188,6 +211,7 @@ main() {
   step "1/7" "Inspect Claude Code settings"
   info "OS: $(uname -s)/$(uname -m)"
   info "API URL: $(mask_url "$CLAUDE_BASE_URL")"
+  [[ -n "$CLAUDE_MODEL_VALUE" ]] && info "Model: $CLAUDE_MODEL_VALUE"
   [[ -n "$CLAUDE_TOKEN_VALUE" ]] && info "Token: $(mask_secret "$CLAUDE_TOKEN_VALUE")"
   validate_required_inputs
   step "2/7" "Verify config directories"

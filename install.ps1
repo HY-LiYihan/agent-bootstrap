@@ -19,7 +19,7 @@ Agent Bootstrap
 
 Usage:
   `$env:AGENT='codex'; `$env:AGENT_TOKEN='...'; `$env:AGENT_BASE_URL='...'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
-  `$env:AGENT='claudecode'; `$env:AGENT_TOKEN='...'; `$env:AGENT_BASE_URL='...'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
+  `$env:AGENT='claudecode'; `$env:AGENT_TOKEN='...'; `$env:AGENT_BASE_URL='...'; `$env:AGENT_MODEL='...'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
   `$env:AGENT='openclaw'; `$env:AGENT_TOKEN='...'; `$env:AGENT_BASE_URL='...'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
   `$env:AGENT='hermes'; `$env:AGENT_TOKEN='...'; `$env:AGENT_BASE_URL='...'; `$env:AGENT_MODEL='...'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
   `$env:AGENT='codexplusplus'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
@@ -30,7 +30,7 @@ Aliases:
 Unified env:
   AGENT_TOKEN      Shared API token for the selected agent
   AGENT_BASE_URL   Shared gateway/base URL for the selected agent
-  AGENT_MODEL      Optional model value for agents that support it
+  AGENT_MODEL      Optional default model for Codex, Claude Code, OpenClaw, and Hermes
   CODEX_PLUS_PLUS_REF  Optional upstream Codex++ ref/tag (default: v1.0.7)
 "@
 }
@@ -67,6 +67,8 @@ function Set-AgentEnv {
             if ($env:AGENT_TOKEN -and -not $env:CLAUDE_TOKEN) { $env:CLAUDE_TOKEN = $env:AGENT_TOKEN }
             if ($env:AGENT_TOKEN -and -not $env:CLAUDE_CLIENT_TOKEN) { $env:CLAUDE_CLIENT_TOKEN = $env:AGENT_TOKEN }
             if ($env:AGENT_BASE_URL -and -not $env:CLAUDE_API_URL) { $env:CLAUDE_API_URL = $env:AGENT_BASE_URL }
+            if ($env:AGENT_MODEL -and -not $env:CLAUDE_MODEL) { $env:CLAUDE_MODEL = $env:AGENT_MODEL }
+            if ($env:AGENT_MODEL -and -not $env:ANTHROPIC_MODEL) { $env:ANTHROPIC_MODEL = $env:AGENT_MODEL }
         }
         "openclaw" {
             if ($env:AGENT_TOKEN -and -not $env:OPENCLAW_TOKEN) { $env:OPENCLAW_TOKEN = $env:AGENT_TOKEN }

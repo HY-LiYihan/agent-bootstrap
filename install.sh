@@ -28,7 +28,7 @@ Agent Bootstrap
 
 Usage:
   AGENT=codex AGENT_TOKEN=... AGENT_BASE_URL=... bash -c "\$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
-  AGENT=claudecode AGENT_TOKEN=... AGENT_BASE_URL=... bash -c "\$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
+  AGENT=claudecode AGENT_TOKEN=... AGENT_BASE_URL=... AGENT_MODEL=... bash -c "\$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
   AGENT=openclaw AGENT_TOKEN=... AGENT_BASE_URL=... bash -c "\$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
   AGENT=hermes AGENT_TOKEN=... AGENT_BASE_URL=... AGENT_MODEL=... bash -c "\$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
   AGENT=codexplusplus bash -c "\$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
@@ -42,7 +42,7 @@ You can also pass the agent as the first argument:
 Unified env:
   AGENT_TOKEN      Shared API token for the selected agent
   AGENT_BASE_URL   Shared gateway/base URL for the selected agent
-  AGENT_MODEL      Optional model value for agents that support it
+  AGENT_MODEL      Optional default model for Codex, Claude Code, OpenClaw, and Hermes
   CODEX_PLUS_PLUS_REF  Optional upstream Codex++ ref/tag (default: v1.0.7)
 USAGE
 }
@@ -71,6 +71,8 @@ prepare_agent_env() {
       if [[ -n "${AGENT_TOKEN:-}" && -z "${CLAUDE_TOKEN:-}" ]]; then export CLAUDE_TOKEN="$AGENT_TOKEN"; fi
       if [[ -n "${AGENT_TOKEN:-}" && -z "${CLAUDE_CLIENT_TOKEN:-}" ]]; then export CLAUDE_CLIENT_TOKEN="$AGENT_TOKEN"; fi
       if [[ -n "${AGENT_BASE_URL:-}" && -z "${CLAUDE_API_URL:-}" ]]; then export CLAUDE_API_URL="$AGENT_BASE_URL"; fi
+      if [[ -n "${AGENT_MODEL:-}" && -z "${CLAUDE_MODEL:-}" ]]; then export CLAUDE_MODEL="$AGENT_MODEL"; fi
+      if [[ -n "${AGENT_MODEL:-}" && -z "${ANTHROPIC_MODEL:-}" ]]; then export ANTHROPIC_MODEL="$AGENT_MODEL"; fi
       ;;
     openclaw)
       if [[ -n "${AGENT_TOKEN:-}" && -z "${OPENCLAW_TOKEN:-}" ]]; then export OPENCLAW_TOKEN="$AGENT_TOKEN"; fi

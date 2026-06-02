@@ -2,6 +2,7 @@
 param(
     [string]$Token = $(if ($env:CLAUDE_CLIENT_TOKEN) { $env:CLAUDE_CLIENT_TOKEN } elseif ($env:CLAUDE_TOKEN) { $env:CLAUDE_TOKEN } else { "" }),
     [string]$BaseUrl = $(if ($env:CLAUDE_API_URL) { $env:CLAUDE_API_URL } else { "" }),
+    [string]$Model = $(if ($env:CLAUDE_MODEL) { $env:CLAUDE_MODEL } elseif ($env:ANTHROPIC_MODEL) { $env:ANTHROPIC_MODEL } elseif ($env:AGENT_MODEL) { $env:AGENT_MODEL } else { "" }),
     [string]$ClaudeHome = $(if ($env:CLAUDE_HOME) { $env:CLAUDE_HOME } else { Join-Path $env:USERPROFILE ".claude" }),
     [switch]$DryRun,
     [switch]$Force,
@@ -57,7 +58,11 @@ function Write-ClaudeSettings {
     Invoke-Run "create $ClaudeHome" { New-Item -ItemType Directory -Path $ClaudeHome -Force | Out-Null }
     Backup-File $SettingsFile
     Backup-File $ClaudeJsonFile
-    if ($DryRun) { Write-Info "Would write Claude settings with token $(Mask-Secret $Token)"; return }
+    if ($DryRun) {
+        Write-Info "Would write Claude settings with token $(Mask-Secret $Token)"
+        if ($Model) { Write-Info "Would set Claude default model: $Model" }
+        return
+    }
 
     $settings = @{}
     if (Test-Path $SettingsFile) {
@@ -66,6 +71,10 @@ function Write-ClaudeSettings {
     $settings.env = @{}
     $settings.env.ANTHROPIC_AUTH_TOKEN = $Token
     $settings.env.ANTHROPIC_BASE_URL = $BaseUrl
+    if ($Model) {
+        $settings.model = $Model
+        $settings.env.ANTHROPIC_MODEL = $Model
+    }
     $settings.env.API_TIMEOUT_MS = 600000
     $settings.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE = "1"
     $settings.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
@@ -77,6 +86,7 @@ function Write-ClaudeSettings {
     [System.IO.File]::WriteAllText($ClaudeJsonFile, ($claudeJson | ConvertTo-Json -Depth 20), [System.Text.UTF8Encoding]::new($false))
     [System.Environment]::SetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN", $Token, [System.EnvironmentVariableTarget]::User)
     [System.Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", $BaseUrl, [System.EnvironmentVariableTarget]::User)
+    if ($Model) { [System.Environment]::SetEnvironmentVariable("ANTHROPIC_MODEL", $Model, [System.EnvironmentVariableTarget]::User) }
     Write-Ok "Claude settings configured: $SettingsFile"
 }
 
@@ -86,6 +96,7 @@ Write-Host "| Claude Code Bootstrap                           |" -ForegroundColo
 Write-Host "+--------------------------------------------------+" -ForegroundColor Cyan
 Write-Step "1/7" "Inspect Claude Code settings"
 Write-Info "API URL: $(Mask-Url $BaseUrl)"
+if ($Model) { Write-Info "Model: $Model" }
 if ($Token) { Write-Info "Token: $(Mask-Secret $Token)" }
 Assert-RequiredInputs
 Write-Step "2/7" "Verify config directories"

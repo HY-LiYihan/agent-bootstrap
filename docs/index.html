@@ -446,7 +446,7 @@
           ],
           claudecode: [
             'Installs or verifies Claude Code and writes API-token based settings.',
-            'Configures ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL for the selected gateway.',
+            'Configures ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, and the selected default model for the gateway.',
             'Avoids printing the full key in installer logs.'
           ],
           openclaw: [
@@ -513,7 +513,7 @@
           ],
           claudecode: [
             '安装或确认 Claude Code，并写入 API-token 形态设置。',
-            '为所选网关配置 ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_BASE_URL。',
+            '为所选网关配置 ANTHROPIC_AUTH_TOKEN、ANTHROPIC_BASE_URL 和所选默认模型。',
             '安装日志不会打印完整 key。'
           ],
           openclaw: [
@@ -551,7 +551,11 @@
       if (state.agent === 'openclaw') return 'YOUR_OPENCLAW_BASE_URL';
       return 'YOUR_HERMES_BASE_URL';
     }
-    function defaultModel(agent = state.agent) { return agent === 'openclaw' ? 'anthropic/claude-opus-4-7' : 'gpt-5.5'; }
+    function defaultModel(agent = state.agent) {
+      if (agent === 'claudecode') return 'claude-sonnet-4-5';
+      if (agent === 'openclaw') return 'anthropic/claude-opus-4-7';
+      return 'gpt-5.5';
+    }
     function modelValue() { return state.model || defaultModel(); }
 
     function codexCommand(isWindows) {
@@ -563,7 +567,7 @@
     }
 
     function agentCommand(agent, isWindows) {
-      const modelPart = (agent === 'openclaw' || agent === 'hermes')
+      const modelPart = (agent === 'claudecode' || agent === 'openclaw' || agent === 'hermes')
         ? (isWindows ? `; $env:AGENT_MODEL=${ps(modelValue())}` : ` AGENT_MODEL=${sh(modelValue())}`)
         : '';
       if (isWindows) {

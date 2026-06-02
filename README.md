@@ -196,7 +196,7 @@ The main contract is deliberately simple:
 - `AGENT`: `codex`, `claudecode`, `openclaw`, `hermes`, or `codexplusplus`
 - `AGENT_TOKEN`: the API token for that agent/gateway
 - `AGENT_BASE_URL`: the API gateway/base URL for that agent
-- `AGENT_MODEL`: optional model override for agents that use a model setting
+- `AGENT_MODEL`: optional default model override for Codex, Claude Code, OpenClaw, and Hermes
 - `CODEX_SECURITY_PROFILE`: `max` or `safe`, default `max`
 - `CODEX_PLUS_PLUS_REF`: optional upstream Codex++ ref/tag, default `v1.0.7`
 
@@ -207,7 +207,7 @@ AGENT=codex AGENT_TOKEN="YOUR_TOKEN" AGENT_BASE_URL="YOUR_CODEX_BASE_URL" bash -
 ```
 
 ```bash
-AGENT=claudecode AGENT_TOKEN="YOUR_TOKEN" AGENT_BASE_URL="YOUR_CLAUDE_BASE_URL" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
+AGENT=claudecode AGENT_TOKEN="YOUR_TOKEN" AGENT_BASE_URL="YOUR_CLAUDE_BASE_URL" AGENT_MODEL="claude-sonnet-4-5" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
 ```
 
 ```bash
@@ -235,6 +235,7 @@ irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.
 $env:AGENT='claudecode'
 $env:AGENT_TOKEN='YOUR_TOKEN'
 $env:AGENT_BASE_URL='YOUR_CLAUDE_BASE_URL'
+$env:AGENT_MODEL='claude-sonnet-4-5'
 irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
 ```
 
@@ -321,7 +322,7 @@ stream_idle_timeout_ms = 300000
 
 Claude Code:
 
-- `~/.claude/settings.json` with `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, timeout, and traffic-reduction env values.
+- `~/.claude/settings.json` with `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, optional `ANTHROPIC_MODEL`/`model`, timeout, and traffic-reduction env values.
 - `~/.claude.json` with onboarding marked complete.
 
 OpenClaw:
@@ -350,7 +351,7 @@ macOS/Linux:
 
 ```bash
 AGENT=codex AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-codex-install --skip-shell-rc --yes
-AGENT=claudecode AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/api AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-claude-install
+AGENT=claudecode AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/api AGENT_MODEL=claude-sonnet-4-5 AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-claude-install
 AGENT=openclaw AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/api AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run
 AGENT=hermes AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_MODEL=gpt-5.5 AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-install
 AGENT=codexplusplus AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-setup --provider-sync
