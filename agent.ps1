@@ -73,8 +73,9 @@ Write-Host 'Choose an install target:'
 Write-Host '  1) Codex'
 Write-Host '  2) Claude Code'
 Write-Host '  3) OpenClaw'
-Write-Host '  4) Codex++ App addon'
-Write-Host '  5) All three agents with the same token/base URL'
+Write-Host '  4) Hermes Agent'
+Write-Host '  5) Codex++ App addon'
+Write-Host '  6) All four agents with the same token/base URL'
 Write-Host '  q) Quit'
 
 $choice = Ask-Value 'Select' '1'
@@ -82,8 +83,9 @@ switch ($choice.ToLowerInvariant()) {
     { $_ -in @('1', 'codex') } { $agent = 'codex'; break }
     { $_ -in @('2', 'claude', 'claudecode', 'claude-code') } { $agent = 'claudecode'; break }
     { $_ -in @('3', 'openclaw', 'claw') } { $agent = 'openclaw'; break }
-    { $_ -in @('4', 'codexplusplus', 'codex++', 'cpp') } { $agent = 'codexplusplus'; break }
-    { $_ -in @('5', 'all') } { $agent = 'all'; break }
+    { $_ -in @('4', 'hermes', 'hermes-agent') } { $agent = 'hermes'; break }
+    { $_ -in @('5', 'codexplusplus', 'codex++', 'cpp') } { $agent = 'codexplusplus'; break }
+    { $_ -in @('6', 'all') } { $agent = 'all'; break }
     { $_ -in @('q', 'quit') } { Write-Host '[WARN] Cancelled' -ForegroundColor Yellow; return }
     default { throw "Unknown choice: $choice" }
 }
@@ -107,6 +109,13 @@ if ($agent -eq 'codex') {
     $model = Ask-Value 'OpenClaw model' $(if ($env:AGENT_MODEL) { $env:AGENT_MODEL } elseif ($env:OPENCLAW_MODEL) { $env:OPENCLAW_MODEL } else { 'anthropic/claude-opus-4-7' })
     Assert-TokenAndBaseUrl -Token $token -BaseUrl $baseUrl
     Invoke-AgentInstaller -Agent 'openclaw' -Token $token -BaseUrl $baseUrl -Model $model
+} elseif ($agent -eq 'hermes') {
+    $token = Ask-Value 'API token' $(if ($env:AGENT_TOKEN) { $env:AGENT_TOKEN } elseif ($env:HERMES_API_KEY) { $env:HERMES_API_KEY } elseif ($env:HERMES_TOKEN) { $env:HERMES_TOKEN } else { '' })
+    Write-Host '[INFO] Hermes base URL is required; no default is bundled' -ForegroundColor Cyan
+    $baseUrl = Ask-Value 'Hermes base URL' $(if ($env:AGENT_BASE_URL) { $env:AGENT_BASE_URL } elseif ($env:HERMES_BASE_URL) { $env:HERMES_BASE_URL } else { '' })
+    $model = Ask-Value 'Hermes model' $(if ($env:AGENT_MODEL) { $env:AGENT_MODEL } elseif ($env:HERMES_MODEL) { $env:HERMES_MODEL } else { 'gpt-5.5' })
+    Assert-TokenAndBaseUrl -Token $token -BaseUrl $baseUrl
+    Invoke-AgentInstaller -Agent 'hermes' -Token $token -BaseUrl $baseUrl -Model $model
 } elseif ($agent -eq 'codexplusplus') {
     Write-Host '[INFO] Codex++ is an optional Codex App enhancer. It does not need an API token or base URL.' -ForegroundColor Cyan
     $ref = if ($env:CODEX_PLUS_PLUS_REF) { $env:CODEX_PLUS_PLUS_REF } else { 'v1.0.7' }
@@ -119,12 +128,14 @@ if ($agent -eq 'codex') {
     Write-Host '[INFO] Codex API base URL is required; no default is bundled' -ForegroundColor Cyan
     $codexBase = Ask-Value 'Codex API base URL' $(if ($env:CODEX_API_URL) { $env:CODEX_API_URL } else { '' })
     $model = Ask-Value 'OpenClaw model' $(if ($env:AGENT_MODEL) { $env:AGENT_MODEL } elseif ($env:OPENCLAW_MODEL) { $env:OPENCLAW_MODEL } else { 'anthropic/claude-opus-4-7' })
+    $hermesModel = Ask-Value 'Hermes model' $(if ($env:HERMES_MODEL) { $env:HERMES_MODEL } else { 'gpt-5.5' })
     Assert-TokenAndBaseUrl -Token $sharedToken -BaseUrl $sharedBase
     Assert-TokenAndBaseUrl -Token $sharedToken -BaseUrl $codexBase
 
     Invoke-AgentInstaller -Agent 'codex' -Token $sharedToken -BaseUrl $codexBase
     Invoke-AgentInstaller -Agent 'claudecode' -Token $sharedToken -BaseUrl $sharedBase
     Invoke-AgentInstaller -Agent 'openclaw' -Token $sharedToken -BaseUrl $sharedBase -Model $model
+    Invoke-AgentInstaller -Agent 'hermes' -Token $sharedToken -BaseUrl $sharedBase -Model $hermesModel
 }
 
 Write-Host '[OK] Agent Bootstrap finished' -ForegroundColor Green

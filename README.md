@@ -10,7 +10,7 @@ Use the web command generator if you want a copy-paste install command without e
 https://hy-liyihan.github.io/agent-bootstrap/
 ```
 
-Paste your token and base URL in the page, choose Codex, Claude Code, OpenClaw, or Codex++, then copy the generated macOS, Linux, or Windows command. The page is static HTML; it does not send, store, or put your token into the URL.
+Paste your API key, base URL, and optional default model in the page, choose Codex, Claude Code, OpenClaw, or Hermes Agent, then copy the generated macOS, Linux, or Windows command. The page is static HTML; it does not send, store, or put your API key into the URL. It also supports English/Chinese copy with best-effort IP-region language detection and a manual language switch.
 
 ## Stable Codex Install
 
@@ -82,6 +82,7 @@ The public entrypoints download this repository through GitHub codeload branch a
 - `codex`: configures OpenAI Codex CLI with a custom gateway provider.
 - `claudecode`: installs/configures Claude Code with `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL`.
 - `openclaw`: writes OpenClaw model and auth JSON config.
+- `hermes`: installs/configures [NousResearch Hermes Agent](https://github.com/NousResearch/hermes-agent) with a custom OpenAI-compatible gateway.
 
 ## Supported Addons
 
@@ -92,6 +93,7 @@ Aliases:
 - `codex`, `openai-codex`
 - `claudecode`, `claude`, `claude-code`
 - `openclaw`, `claw`
+- `hermes`, `hermes-agent`
 - `codexplusplus`, `codex-plus-plus`, `codex++`, `cpp`
 
 ## Quick Start
@@ -108,7 +110,7 @@ There are also three broader entry styles:
 
 1. macOS/Linux wizard: one command, then enter `base_url` and `key`, choose high-autonomy or safe Codex config, and optionally install Codex++.
 2. Direct install: pass env values up front for non-interactive setup.
-3. Interactive menu: choose Codex, Claude Code, OpenClaw, Codex++, or all provider-configured agents.
+3. Interactive menu: choose Codex, Claude Code, OpenClaw, Hermes Agent, Codex++, or all provider-configured agents.
 
 macOS/Linux wizard:
 
@@ -179,17 +181,19 @@ Online editable examples:
 - [examples/codex-default.sh](https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/examples/codex-default.sh)
 - [examples/claudecode-default.sh](https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/examples/claudecode-default.sh)
 - [examples/openclaw-default.sh](https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/examples/openclaw-default.sh)
+- [examples/hermes-default.sh](https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/examples/hermes-default.sh)
 - [examples/codexplusplus-default.sh](https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/examples/codexplusplus-default.sh)
 - [examples/codex-default.ps1](https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/examples/codex-default.ps1)
 - [examples/claudecode-default.ps1](https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/examples/claudecode-default.ps1)
 - [examples/openclaw-default.ps1](https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/examples/openclaw-default.ps1)
+- [examples/hermes-default.ps1](https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/examples/hermes-default.ps1)
 - [examples/codexplusplus-default.ps1](https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/examples/codexplusplus-default.ps1)
 
 Direct one-line install remains supported:
 
 The main contract is deliberately simple:
 
-- `AGENT`: `codex`, `claudecode`, `openclaw`, or `codexplusplus`
+- `AGENT`: `codex`, `claudecode`, `openclaw`, `hermes`, or `codexplusplus`
 - `AGENT_TOKEN`: the API token for that agent/gateway
 - `AGENT_BASE_URL`: the API gateway/base URL for that agent
 - `AGENT_MODEL`: optional model override for agents that use a model setting
@@ -208,6 +212,10 @@ AGENT=claudecode AGENT_TOKEN="YOUR_TOKEN" AGENT_BASE_URL="YOUR_CLAUDE_BASE_URL" 
 
 ```bash
 AGENT=openclaw AGENT_TOKEN="YOUR_TOKEN" AGENT_BASE_URL="YOUR_OPENCLAW_BASE_URL" AGENT_MODEL="anthropic/claude-opus-4-7" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
+```
+
+```bash
+AGENT=hermes AGENT_TOKEN="YOUR_TOKEN" AGENT_BASE_URL="YOUR_HERMES_BASE_URL" AGENT_MODEL="gpt-5.5" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
 ```
 
 ```bash
@@ -235,6 +243,14 @@ $env:AGENT='openclaw'
 $env:AGENT_TOKEN='YOUR_TOKEN'
 $env:AGENT_BASE_URL='YOUR_OPENCLAW_BASE_URL'
 $env:AGENT_MODEL='anthropic/claude-opus-4-7'
+irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
+```
+
+```powershell
+$env:AGENT='hermes'
+$env:AGENT_TOKEN='YOUR_TOKEN'
+$env:AGENT_BASE_URL='YOUR_HERMES_BASE_URL'
+$env:AGENT_MODEL='gpt-5.5'
 irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
 ```
 
@@ -312,6 +328,11 @@ OpenClaw:
 - `~/.openclaw/openclaw.json`
 - `~/.openclaw/agents/main/agent/auth-profiles.json`
 
+Hermes Agent:
+
+- `~/.hermes/config.yaml` with `model.provider = custom`, `model.default`, and `model.base_url`.
+- `~/.hermes/.env` with `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `HERMES_API_KEY`, and `HERMES_BASE_URL`.
+
 Codex++:
 
 - Installs the upstream Python package from `BigPizzaV3/CodexPlusPlus`, pinned by default to `v1.0.7`.
@@ -330,6 +351,7 @@ macOS/Linux:
 AGENT=codex AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-codex-install --skip-shell-rc --yes
 AGENT=claudecode AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/api AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-claude-install
 AGENT=openclaw AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/api AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run
+AGENT=hermes AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_MODEL=gpt-5.5 AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-install
 AGENT=codexplusplus AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-setup --provider-sync
 ```
 
@@ -339,6 +361,7 @@ Windows PowerShell:
 $env:CODEX_TOKEN='test-token'; .\agents\codex\install.ps1 -LocalSource . -DryRun -SkipCodexInstall -SkipProfileUpdate
 $env:CLAUDE_CLIENT_TOKEN='test-token'; .\agents\claudecode\install.ps1 -DryRun -SkipInstall
 $env:OPENCLAW_TOKEN='test-token'; .\agents\openclaw\install.ps1 -DryRun
+$env:HERMES_API_KEY='test-token'; .\agents\hermes\install.ps1 -DryRun -SkipInstall
 .\agents\codexplusplus\install.ps1 -DryRun -SkipSetup -ProviderSync 1
 ```
 

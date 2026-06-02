@@ -21,10 +21,11 @@ Usage:
   `$env:AGENT='codex'; `$env:AGENT_TOKEN='...'; `$env:AGENT_BASE_URL='...'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
   `$env:AGENT='claudecode'; `$env:AGENT_TOKEN='...'; `$env:AGENT_BASE_URL='...'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
   `$env:AGENT='openclaw'; `$env:AGENT_TOKEN='...'; `$env:AGENT_BASE_URL='...'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
+  `$env:AGENT='hermes'; `$env:AGENT_TOKEN='...'; `$env:AGENT_BASE_URL='...'; `$env:AGENT_MODEL='...'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
   `$env:AGENT='codexplusplus'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.ps1 | iex
 
 Aliases:
-  codex, claudecode, claude, openclaw, codexplusplus, codex++, cpp
+  codex, claudecode, claude, openclaw, hermes, hermes-agent, codexplusplus, codex++, cpp
 
 Unified env:
   AGENT_TOKEN      Shared API token for the selected agent
@@ -44,6 +45,8 @@ function Normalize-Agent {
         "claude-code" { return "claudecode" }
         "openclaw" { return "openclaw" }
         "claw" { return "openclaw" }
+        "hermes" { return "hermes" }
+        "hermes-agent" { return "hermes" }
         "codexplusplus" { return "codexplusplus" }
         "codex-plus-plus" { return "codexplusplus" }
         "codex++" { return "codexplusplus" }
@@ -70,6 +73,11 @@ function Set-AgentEnv {
             if ($env:AGENT_BASE_URL -and -not $env:OPENCLAW_BASE_URL) { $env:OPENCLAW_BASE_URL = $env:AGENT_BASE_URL }
             if ($env:AGENT_MODEL -and -not $env:OPENCLAW_MODEL) { $env:OPENCLAW_MODEL = $env:AGENT_MODEL }
         }
+        "hermes" {
+            if ($env:AGENT_TOKEN -and -not $env:HERMES_API_KEY) { $env:HERMES_API_KEY = $env:AGENT_TOKEN }
+            if ($env:AGENT_BASE_URL -and -not $env:HERMES_BASE_URL) { $env:HERMES_BASE_URL = $env:AGENT_BASE_URL }
+            if ($env:AGENT_MODEL -and -not $env:HERMES_MODEL) { $env:HERMES_MODEL = $env:AGENT_MODEL }
+        }
     }
 }
 
@@ -87,6 +95,10 @@ function Assert-AgentEnv {
         "openclaw" {
             if (-not $env:OPENCLAW_TOKEN) { Fail "Missing AGENT_TOKEN or OPENCLAW_TOKEN." }
             if ((-not $env:OPENCLAW_BASE_URL) -and (-not $env:OPENCLAW_API_URL)) { Fail "Missing AGENT_BASE_URL, OPENCLAW_BASE_URL, or OPENCLAW_API_URL." }
+        }
+        "hermes" {
+            if ((-not $env:HERMES_API_KEY) -and (-not $env:HERMES_TOKEN) -and (-not $env:OPENAI_API_KEY)) { Fail "Missing AGENT_TOKEN, HERMES_API_KEY, HERMES_TOKEN, or OPENAI_API_KEY." }
+            if ((-not $env:HERMES_BASE_URL) -and (-not $env:OPENAI_BASE_URL)) { Fail "Missing AGENT_BASE_URL, HERMES_BASE_URL, or OPENAI_BASE_URL." }
         }
         "codexplusplus" {
         }
@@ -130,14 +142,14 @@ function Main {
     Write-Host ""
     Write-Host "+--------------------------------------------------+" -ForegroundColor Cyan
     Write-Host "| Agent Bootstrap                                 |" -ForegroundColor Cyan
-    Write-Host "| codex / claudecode / openclaw / codex++        |" -ForegroundColor Cyan
+    Write-Host "| codex / claudecode / openclaw / hermes         |" -ForegroundColor Cyan
     Write-Host "+--------------------------------------------------+" -ForegroundColor Cyan
     Write-Host ""
 
     if ($Help) { Show-Help; return }
     if (-not $Agent) {
         Show-Help
-        Fail "Missing AGENT. Set `$env:AGENT to codex, claudecode, openclaw, or codexplusplus."
+        Fail "Missing AGENT. Set `$env:AGENT to codex, claudecode, openclaw, hermes, or codexplusplus."
     }
 
     $normalized = Normalize-Agent $Agent

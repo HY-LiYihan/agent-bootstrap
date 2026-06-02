@@ -30,10 +30,11 @@ Usage:
   AGENT=codex AGENT_TOKEN=... AGENT_BASE_URL=... bash -c "\$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
   AGENT=claudecode AGENT_TOKEN=... AGENT_BASE_URL=... bash -c "\$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
   AGENT=openclaw AGENT_TOKEN=... AGENT_BASE_URL=... bash -c "\$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
+  AGENT=hermes AGENT_TOKEN=... AGENT_BASE_URL=... AGENT_MODEL=... bash -c "\$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
   AGENT=codexplusplus bash -c "\$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
 
 Aliases:
-  codex, claudecode, claude, openclaw, codexplusplus, codex++, cpp
+  codex, claudecode, claude, openclaw, hermes, hermes-agent, codexplusplus, codex++, cpp
 
 You can also pass the agent as the first argument:
   bash -c "\$(curl -fsSL .../install.sh)" -- codex
@@ -51,6 +52,7 @@ normalize_agent() {
     codex|openai-codex) printf "codex" ;;
     claude|claudecode|claude-code) printf "claudecode" ;;
     openclaw|claw) printf "openclaw" ;;
+    hermes|hermes-agent) printf "hermes" ;;
     codexplusplus|codex-plus-plus|codex++|cpp) printf "codexplusplus" ;;
     *) return 1 ;;
   esac
@@ -75,6 +77,11 @@ prepare_agent_env() {
       if [[ -n "${AGENT_BASE_URL:-}" && -z "${OPENCLAW_BASE_URL:-}" ]]; then export OPENCLAW_BASE_URL="$AGENT_BASE_URL"; fi
       if [[ -n "${AGENT_MODEL:-}" && -z "${OPENCLAW_MODEL:-}" ]]; then export OPENCLAW_MODEL="$AGENT_MODEL"; fi
       ;;
+    hermes)
+      if [[ -n "${AGENT_TOKEN:-}" && -z "${HERMES_API_KEY:-}" ]]; then export HERMES_API_KEY="$AGENT_TOKEN"; fi
+      if [[ -n "${AGENT_BASE_URL:-}" && -z "${HERMES_BASE_URL:-}" ]]; then export HERMES_BASE_URL="$AGENT_BASE_URL"; fi
+      if [[ -n "${AGENT_MODEL:-}" && -z "${HERMES_MODEL:-}" ]]; then export HERMES_MODEL="$AGENT_MODEL"; fi
+      ;;
   esac
 }
 
@@ -92,6 +99,10 @@ validate_agent_env() {
     openclaw)
       [[ -n "${OPENCLAW_TOKEN:-}" ]] || fail "Missing AGENT_TOKEN or OPENCLAW_TOKEN."
       [[ -n "${OPENCLAW_BASE_URL:-${OPENCLAW_API_URL:-}}" ]] || fail "Missing AGENT_BASE_URL, OPENCLAW_BASE_URL, or OPENCLAW_API_URL."
+      ;;
+    hermes)
+      [[ -n "${HERMES_API_KEY:-${HERMES_TOKEN:-${OPENAI_API_KEY:-}}}" ]] || fail "Missing AGENT_TOKEN, HERMES_API_KEY, HERMES_TOKEN, or OPENAI_API_KEY."
+      [[ -n "${HERMES_BASE_URL:-${OPENAI_BASE_URL:-}}" ]] || fail "Missing AGENT_BASE_URL, HERMES_BASE_URL, or OPENAI_BASE_URL."
       ;;
     codexplusplus)
       ;;
@@ -136,13 +147,13 @@ download_source() {
 main() {
   printf "\n%b+--------------------------------------------------+%b\n" "$CYAN" "$NC"
   printf "%b|%b %bAgent Bootstrap%b                                 %b|%b\n" "$CYAN" "$NC" "$BOLD" "$NC" "$CYAN" "$NC"
-  printf "%b|%b codex / claudecode / openclaw / codex++       %b|%b\n" "$CYAN" "$NC" "$CYAN" "$NC"
+  printf "%b|%b codex / claudecode / openclaw / hermes        %b|%b\n" "$CYAN" "$NC" "$CYAN" "$NC"
   printf "%b+--------------------------------------------------+%b\n\n" "$CYAN" "$NC"
 
   local passthrough=()
   if [[ -z "$AGENT" && $# -gt 0 ]]; then
     case "${1:-}" in
-      codex|openai-codex|claude|claudecode|claude-code|openclaw|claw|codexplusplus|codex-plus-plus|codex++|cpp)
+      codex|openai-codex|claude|claudecode|claude-code|openclaw|claw|hermes|hermes-agent|codexplusplus|codex-plus-plus|codex++|cpp)
         AGENT="$1"
         shift
         ;;
@@ -161,7 +172,7 @@ main() {
       *)
         if [[ -z "$AGENT" ]]; then
           case "$1" in
-            codex|openai-codex|claude|claudecode|claude-code|openclaw|claw|codexplusplus|codex-plus-plus|codex++|cpp)
+            codex|openai-codex|claude|claudecode|claude-code|openclaw|claw|hermes|hermes-agent|codexplusplus|codex-plus-plus|codex++|cpp)
               AGENT="$1"
               shift
               continue
@@ -176,7 +187,7 @@ main() {
 
   if [[ -z "$AGENT" ]]; then
     usage
-    fail "Missing AGENT. Set AGENT=codex, AGENT=claudecode, AGENT=openclaw, or AGENT=codexplusplus."
+    fail "Missing AGENT. Set AGENT=codex, AGENT=claudecode, AGENT=openclaw, AGENT=hermes, or AGENT=codexplusplus."
   fi
 
   local normalized source_dir installer

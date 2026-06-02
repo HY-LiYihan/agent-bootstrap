@@ -37,7 +37,7 @@ jobs:
           grep -n 'install-codex.ps1' docs/index.html
           grep -n 'claudecode' docs/index.html
           grep -n 'openclaw' docs/index.html
-          grep -n 'codexplusplus' docs/index.html
+          grep -n 'hermes' docs/index.html
       - name: Codex stable entrypoint dry run
         run: CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --dry-run --skip-codex-install --skip-shell-rc --yes
       - name: Codex Node fallback dry run
@@ -115,6 +115,8 @@ jobs:
         run: AGENT=claudecode AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/anthropic ./install.sh --local . --dry-run --skip-claude-install
       - name: OpenClaw dispatcher dry run
         run: AGENT=openclaw AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/anthropic ./install.sh --local . --dry-run
+      - name: Hermes dispatcher dry run
+        run: AGENT=hermes AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_MODEL=gpt-5.5 ./install.sh --local . --dry-run --skip-install
       - name: Codex++ dispatcher dry run
         run: AGENT=codexplusplus ./install.sh --local . --dry-run --skip-setup --provider-sync
       - name: Agent switch dry run
@@ -250,6 +252,13 @@ jobs:
           $env:OPENCLAW_TOKEN = 'test-token'
           $env:OPENCLAW_BASE_URL = 'https://example.test/anthropic'
           .\agents\openclaw\install.ps1 -DryRun
+      - name: Hermes PowerShell dry run
+        shell: pwsh
+        run: |
+          $env:HERMES_API_KEY = 'test-token'
+          $env:HERMES_BASE_URL = 'https://example.test/v1'
+          $env:HERMES_MODEL = 'gpt-5.5'
+          .\agents\hermes\install.ps1 -DryRun -SkipInstall
       - name: Codex++ PowerShell dry run
         shell: pwsh
         run: .\agents\codexplusplus\install.ps1 -DryRun -SkipSetup -ProviderSync 1

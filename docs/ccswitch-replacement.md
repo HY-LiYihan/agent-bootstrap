@@ -31,6 +31,12 @@ OpenClaw:
 AGENT=openclaw AGENT_TOKEN=YOUR_TOKEN AGENT_BASE_URL=YOUR_OPENCLAW_BASE_URL AGENT_MODEL=anthropic/claude-opus-4-7 bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
 ```
 
+Hermes Agent:
+
+```bash
+AGENT=hermes AGENT_TOKEN=YOUR_TOKEN AGENT_BASE_URL=YOUR_HERMES_BASE_URL AGENT_MODEL=gpt-5.5 bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install.sh)"
+```
+
 Codex++ addon:
 
 ```bash
