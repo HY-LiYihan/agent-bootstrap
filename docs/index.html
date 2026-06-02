@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Bootstrap Command Generator</title>
+  <meta name="description" content="Generate one-line install commands for Codex, Claude Code, OpenClaw, and Codex++ using Agent Bootstrap.">
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --ink: #17211b;
+      --muted: #5e6a61;
+      --panel: #fffaf0;
+      --panel-strong: #fff4dc;
+      --line: #d8cdb7;
+      --accent: #0e6f5c;
+      --accent-2: #c34d2f;
+      --code-bg: #101713;
+      --code-ink: #eaf6ed;
+      --shadow: 0 22px 60px rgba(23, 33, 27, 0.14);
+      color-scheme: light;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(120deg, rgba(14, 111, 92, 0.16), transparent 34%),
+        linear-gradient(240deg, rgba(195, 77, 47, 0.14), transparent 38%),
+        repeating-linear-gradient(90deg, rgba(23, 33, 27, 0.035) 0 1px, transparent 1px 80px),
+        var(--bg);
+      color: var(--ink);
+      font-family: ui-serif, Georgia, "Times New Roman", serif;
+      line-height: 1.5;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 40px 0 56px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+      gap: 24px;
+      align-items: end;
+      padding: 36px 0 28px;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 820px;
+      font-size: clamp(42px, 7vw, 88px);
+      line-height: 0.92;
+      letter-spacing: 0;
+    }
+
+    .lede {
+      margin: 20px 0 0;
+      max-width: 720px;
+      color: var(--muted);
+      font: 18px/1.6 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    .top-card,
+    .builder,
+    .notes,
+    .mini-card {
+      border: 1px solid var(--line);
+      background: rgba(255, 250, 240, 0.82);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .top-card {
+      padding: 20px;
+      border-radius: 14px;
+      font: 15px/1.55 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    .top-card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+    }
+
+    .builder {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.86fr) minmax(0, 1.14fr);
+      overflow: hidden;
+      border-radius: 18px;
+    }
+
+    .controls {
+      padding: 24px;
+      border-right: 1px solid var(--line);
+      background: rgba(255, 244, 220, 0.62);
+    }
+
+    .result {
+      padding: 24px;
+    }
+
+    .section-title {
+      margin: 0 0 12px;
+      font: 700 13px/1 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .option-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+
+    .choice {
+      position: relative;
+      display: block;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      cursor: pointer;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    .choice:hover {
+      transform: translateY(-1px);
+      border-color: rgba(14, 111, 92, 0.48);
+    }
+
+    .choice input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .choice span {
+      display: block;
+      padding: 12px 12px 10px;
+      font: 700 15px/1.2 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    .choice small {
+      display: block;
+      padding: 0 12px 12px;
+      color: var(--muted);
+      font: 12px/1.4 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    .choice input:checked + span,
+    .choice input:checked + span + small {
+      color: #063f35;
+    }
+
+    .choice:has(input:checked) {
+      border-color: var(--accent);
+      background: #eaf7ef;
+    }
+
+    .field {
+      margin-bottom: 16px;
+      font: 14px/1.4 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    label.field-label {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 7px;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.78);
+      color: var(--ink);
+      padding: 12px 12px;
+      font: 15px/1.3 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+      outline: none;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(14, 111, 92, 0.15);
+    }
+
+    .inline {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .code-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .code-head h2 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.1;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    button {
+      border: 1px solid rgba(23, 33, 27, 0.18);
+      border-radius: 999px;
+      background: var(--ink);
+      color: white;
+      padding: 10px 14px;
+      font: 700 14px/1 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: transparent;
+      color: var(--ink);
+    }
+
+    pre {
+      margin: 0;
+      min-height: 170px;
+      overflow: auto;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: var(--code-bg);
+      color: var(--code-ink);
+      padding: 18px;
+      font: 14px/1.6 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .status {
+      min-height: 24px;
+      margin-top: 10px;
+      color: var(--accent);
+      font: 14px/1.4 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    .notes {
+      margin-top: 22px;
+      padding: 20px;
+      border-radius: 16px;
+      font: 15px/1.6 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    .notes ul {
+      margin: 10px 0 0;
+      padding-left: 20px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 22px;
+    }
+
+    .mini-card {
+      border-radius: 14px;
+      padding: 16px;
+      font: 14px/1.5 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    .mini-card strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--ink);
+    }
+
+    footer {
+      padding-top: 28px;
+      color: var(--muted);
+      font: 14px/1.5 ui-sans-serif, "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    @media (max-width: 860px) {
+      header,
+      .builder,
+      .cards {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+    }
+
+    @media (max-width: 560px) {
+      .wrap {
+        width: min(100% - 20px, 1120px);
+        padding-top: 18px;
+      }
+
+      header {
+        padding-top: 18px;
+      }
+
+      .option-grid,
+      .inline {
+        grid-template-columns: 1fr;
+      }
+
+      .code-head {
+        display: block;
+      }
+
+      .button-row {
+        margin-top: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div>
+        <h1>One-line setup for model CLIs.</h1>
+        <p class="lede">Paste your token and base URL, choose an agent and operating system, then copy a ready-to-run install command. Values stay in this browser tab and are not sent anywhere by this page.</p>
+      </div>
+      <aside class="top-card">
+        <strong>Stable target</strong>
+        Commands use <code>HY-LiYihan/agent-bootstrap@stable</code>, so the public command does not need to change when the implementation is updated.
+      </aside>
+    </header>
+
+    <section class="builder" aria-label="Command generator">
+      <div class="controls">
+        <p class="section-title">Agent</p>
+        <div class="option-grid" id="agentChoices">
+          <label class="choice">
+            <input type="radio" name="agent" value="codex" checked>
+            <span>Codex</span>
+            <small>Custom provider, high-autonomy default.</small>
+          </label>
+          <label class="choice">
+            <input type="radio" name="agent" value="claudecode">
+            <span>Claude Code</span>
+            <small>API-token based Claude Code config.</small>
+          </label>
+          <label class="choice">
+            <input type="radio" name="agent" value="openclaw">
+            <span>OpenClaw</span>
+            <small>Writes OpenClaw auth profile config.</small>
+          </label>
+          <label class="choice">
+            <input type="radio" name="agent" value="codexplusplus">
+            <span>Codex++</span>
+            <small>Optional Codex App enhancer, no token needed.</small>
+          </label>
+        </div>
+
+        <p class="section-title">Platform</p>
+        <div class="option-grid">
+          <label class="choice">
+            <input type="radio" name="platform" value="mac" checked>
+            <span>macOS</span>
+            <small>curl plus bash.</small>
+          </label>
+          <label class="choice">
+            <input type="radio" name="platform" value="linux">
+            <span>Ubuntu/Linux</span>
+            <small>same stable bash entrypoint.</small>
+          </label>
+          <label class="choice">
+            <input type="radio" name="platform" value="windows">
+            <span>Windows</span>
+            <small>PowerShell with irm/iex.</small>
+          </label>
+        </div>
+
+        <div class="field token-field">
+          <label class="field-label" for="token">API token <span class="hint">not stored</span></label>
+          <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="YOUR_TOKEN">
+        </div>
+
+        <div class="field base-field">
+          <label class="field-label" for="baseUrl">Base URL <span class="hint">gateway endpoint</span></label>
+          <input id="baseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://example.test/v1">
+        </div>
+
+        <div class="inline">
+          <div class="field model-field">
+            <label class="field-label" for="model">Model</label>
+            <input id="model" type="text" autocomplete="off" spellcheck="false" value="anthropic/claude-opus-4-7">
+          </div>
+          <div class="field codex-profile-field">
+            <label class="field-label" for="profile">Codex profile</label>
+            <select id="profile">
+              <option value="max">Maximum autonomy</option>
+              <option value="safe">Official safe defaults</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="result">
+        <div class="code-head">
+          <h2 id="commandTitle">Codex on macOS</h2>
+          <div class="button-row">
+            <button id="copyButton" type="button">Copy command</button>
+            <button id="resetButton" class="secondary" type="button">Reset</button>
+          </div>
+        </div>
+        <pre id="commandOutput" aria-live="polite"></pre>
+        <div class="status" id="status"></div>
+        <div class="notes">
+          <strong>What this command does</strong>
+          <ul id="explain"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="cards" aria-label="Documentation links">
+      <div class="mini-card">
+        <strong>Stable Codex path</strong>
+        Installs or verifies Codex CLI, writes <code>model_provider = "custom"</code>, stores the token in <code>~/.codex/private.env</code>, and syncs provider history.
+      </div>
+      <div class="mini-card">
+        <strong>Switcher workflow</strong>
+        Use <code>switch.js</code> after setup to save and reapply named provider profiles across agents.
+      </div>
+      <div class="mini-card">
+        <strong>More docs</strong>
+        Read the <a href="https://github.com/HY-LiYihan/agent-bootstrap#readme">README</a>, <a href="./config-notes.md">Codex config notes</a>, and <a href="./ccswitch-replacement.md">CCSwitch replacement notes</a>.
+      </div>
+    </section>
+
+    <footer>
+      This page is static HTML. It does not send form values to a server and does not persist them in localStorage, sessionStorage, cookies, or the URL.
+    </footer>
+  </main>
+
+  <script>
+    const rawBase = 'https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable';
+    const state = {
+      agent: 'codex',
+      platform: 'mac',
+      token: '',
+      baseUrl: '',
+      model: 'anthropic/claude-opus-4-7',
+      profile: 'max'
+    };
+
+    const labels = {
+      codex: 'Codex',
+      claudecode: 'Claude Code',
+      openclaw: 'OpenClaw',
+      codexplusplus: 'Codex++',
+      mac: 'macOS',
+      linux: 'Ubuntu/Linux',
+      windows: 'Windows'
+    };
+
+    const tokenInput = document.getElementById('token');
+    const baseInput = document.getElementById('baseUrl');
+    const modelInput = document.getElementById('model');
+    const profileInput = document.getElementById('profile');
+    const output = document.getElementById('commandOutput');
+    const title = document.getElementById('commandTitle');
+    const explain = document.getElementById('explain');
+    const status = document.getElementById('status');
+
+    function sh(value) {
+      const safe = value || placeholderFor('token');
+      return "'" + String(safe).replace(/'/g, "'\\''") + "'";
+    }
+
+    function ps(value) {
+      const safe = value || placeholderFor('token');
+      return "'" + String(safe).replace(/'/g, "''") + "'";
+    }
+
+    function placeholderFor(kind) {
+      if (kind === 'base') {
+        if (state.agent === 'codex') return 'YOUR_CODEX_BASE_URL';
+        if (state.agent === 'claudecode') return 'YOUR_CLAUDE_BASE_URL';
+        if (state.agent === 'openclaw') return 'YOUR_OPENCLAW_BASE_URL';
+      }
+      return 'YOUR_TOKEN';
+    }
+
+    function codexCommand(isWindows) {
+      if (isWindows) {
+        const profile = state.profile === 'safe' ? "$env:CODEX_SECURITY_PROFILE='safe'; " : '';
+        return `${profile}$env:CODEX_TOKEN=${ps(state.token || 'YOUR_TOKEN')}; $env:CODEX_API_URL=${ps(state.baseUrl || 'YOUR_CODEX_BASE_URL')}; irm ${rawBase}/install-codex.ps1 | iex`;
+      }
+      const profile = state.profile === 'safe' ? 'CODEX_SECURITY_PROFILE=safe ' : '';
+      return `${profile}CODEX_TOKEN=${sh(state.token || 'YOUR_TOKEN')} CODEX_API_URL=${sh(state.baseUrl || 'YOUR_CODEX_BASE_URL')} bash -c "$(curl -fsSL ${rawBase}/install-codex.sh)"`;
+    }
+
+    function genericAgentCommand(agent, isWindows) {
+      if (agent === 'codexplusplus') {
+        return isWindows
+          ? `$env:AGENT='codexplusplus'; irm ${rawBase}/install.ps1 | iex`
+          : `AGENT=codexplusplus bash -c "$(curl -fsSL ${rawBase}/install.sh)"`;
+      }
+
+      const token = state.token || 'YOUR_TOKEN';
+      const base = state.baseUrl || placeholderFor('base');
+      const model = state.model || 'anthropic/claude-opus-4-7';
+      const modelPart = agent === 'openclaw'
+        ? (isWindows ? `; $env:AGENT_MODEL=${ps(model)}` : ` AGENT_MODEL=${sh(model)}`)
+        : '';
+
+      if (isWindows) {
+        return `$env:AGENT='${agent}'; $env:AGENT_TOKEN=${ps(token)}; $env:AGENT_BASE_URL=${ps(base)}${modelPart}; irm ${rawBase}/install.ps1 | iex`;
+      }
+      return `AGENT=${agent} AGENT_TOKEN=${sh(token)} AGENT_BASE_URL=${sh(base)}${modelPart} bash -c "$(curl -fsSL ${rawBase}/install.sh)"`;
+    }
+
+    function currentCommand() {
+      const isWindows = state.platform === 'windows';
+      if (state.agent === 'codex') return codexCommand(isWindows);
+      return genericAgentCommand(state.agent, isWindows);
+    }
+
+    function currentNotes() {
+      if (state.agent === 'codex') {
+        return [
+          'Installs or verifies the Codex CLI, using Bun first and npm or NVM fallback when needed.',
+          'Writes a stable custom provider config with model gpt-5.5, high reasoning effort, live web search, and explicit retry settings.',
+          state.profile === 'max'
+            ? 'Uses maximum autonomy: approval_policy = "never" and sandbox_mode = "danger-full-access".'
+            : 'Uses the safe profile: leaves approval policy and sandbox mode at official defaults.',
+          'Stores the token in ~/.codex/private.env instead of hardcoding it into config.toml.',
+          'Syncs Codex session JSON/JSONL and SQLite provider metadata to custom with backups first.'
+        ];
+      }
+      if (state.agent === 'claudecode') {
+        return [
+          'Writes Claude Code API-token settings for the selected gateway.',
+          'Creates shell helper files for API-token based Claude Code usage.',
+          'Avoids printing the full token in installer logs.'
+        ];
+      }
+      if (state.agent === 'openclaw') {
+        return [
+          'Writes OpenClaw auth profile config with your token, base URL, and model.',
+          'Keeps the command one-line so it can be pasted into a fresh shell.',
+          'Use the model field if your gateway expects a different model id.'
+        ];
+      }
+      return [
+        'Installs the optional Codex++ addon from its upstream package.',
+        'No API token is needed for this addon command.',
+        'Run the Codex install first if you still need provider credentials configured.'
+      ];
+    }
+
+    function syncVisibility() {
+      const needsToken = state.agent !== 'codexplusplus';
+      const needsModel = state.agent === 'openclaw';
+      const needsProfile = state.agent === 'codex';
+      document.querySelector('.token-field').style.display = needsToken ? '' : 'none';
+      document.querySelector('.base-field').style.display = needsToken ? '' : 'none';
+      document.querySelector('.model-field').style.display = needsModel ? '' : 'none';
+      document.querySelector('.codex-profile-field').style.display = needsProfile ? '' : 'none';
+      baseInput.placeholder = placeholderFor('base');
+    }
+
+    function render() {
+      syncVisibility();
+      title.textContent = `${labels[state.agent]} on ${labels[state.platform]}`;
+      output.textContent = currentCommand();
+      explain.innerHTML = '';
+      for (const item of currentNotes()) {
+        const li = document.createElement('li');
+        li.textContent = item;
+        explain.appendChild(li);
+      }
+    }
+
+    function readRadios() {
+      state.agent = document.querySelector('input[name="agent"]:checked').value;
+      state.platform = document.querySelector('input[name="platform"]:checked').value;
+      render();
+    }
+
+    document.querySelectorAll('input[name="agent"], input[name="platform"]').forEach((input) => {
+      input.addEventListener('change', readRadios);
+    });
+
+    tokenInput.addEventListener('input', () => {
+      state.token = tokenInput.value.trim();
+      render();
+    });
+
+    baseInput.addEventListener('input', () => {
+      state.baseUrl = baseInput.value.trim();
+      render();
+    });
+
+    modelInput.addEventListener('input', () => {
+      state.model = modelInput.value.trim();
+      render();
+    });
+
+    profileInput.addEventListener('change', () => {
+      state.profile = profileInput.value;
+      render();
+    });
+
+    document.getElementById('resetButton').addEventListener('click', () => {
+      tokenInput.value = '';
+      baseInput.value = '';
+      modelInput.value = 'anthropic/claude-opus-4-7';
+      profileInput.value = 'max';
+      state.token = '';
+      state.baseUrl = '';
+      state.model = modelInput.value;
+      state.profile = 'max';
+      status.textContent = 'Reset to placeholders.';
+      render();
+    });
+
+    document.getElementById('copyButton').addEventListener('click', async () => {
+      const command = currentCommand();
+      try {
+        await navigator.clipboard.writeText(command);
+        status.textContent = 'Command copied.';
+      } catch {
+        const textarea = document.createElement('textarea');
+        textarea.value = command;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+        status.textContent = 'Command copied.';
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>

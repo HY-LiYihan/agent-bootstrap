@@ -2,6 +2,16 @@
 
 One-click bootstrapper focused on making Codex installation repeatable on macOS, Ubuntu/Linux, and Windows. Other agents remain in the repo, but the stable path is now optimized for Codex first.
 
+## Command Generator
+
+Use the web command generator if you want a copy-paste install command without editing shell snippets by hand:
+
+```text
+https://hy-liyihan.github.io/agent-bootstrap/
+```
+
+Paste your token and base URL in the page, choose Codex, Claude Code, OpenClaw, or Codex++, then copy the generated macOS, Linux, or Windows command. The page is static HTML; it does not send, store, or put your token into the URL.
+
 ## Stable Codex Install
 
 macOS:
@@ -92,7 +102,7 @@ Recommended stable Codex-only install:
 CODEX_TOKEN="YOUR_TOKEN" CODEX_API_URL="YOUR_BASE_URL" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.sh)"
 ```
 
-This path intentionally does one thing: install or verify Codex CLI, write a `custom` provider config, store the token in `~/.codex/private.env`, and sync older Codex session metadata to the active provider name. On a fresh machine, the installer first tries Bun, falls back to npm, and can install Node.js through NVM when npm is missing. Existing marketplace and plugin blocks in `~/.codex/config.toml` are preserved by default.
+This path intentionally does one thing: install or verify Codex CLI, write a `custom` provider config, store the token in `~/.codex/private.env`, and sync older Codex session files plus SQLite provider fields to the active provider name. On a fresh machine, the installer first tries Bun, falls back to npm, and can install Node.js through NVM when npm is missing. Existing marketplace and plugin blocks in `~/.codex/config.toml` are preserved by default.
 
 There are also three broader entry styles:
 
@@ -263,8 +273,9 @@ stream_idle_timeout_ms = 300000
 Codex provider history sync:
 
 - Reads the active `model_provider` from `~/.codex/config.toml`.
-- Updates only the first `session_meta` line in `~/.codex/sessions/**/rollout-*.jsonl` and `~/.codex/archived_sessions/**/rollout-*.jsonl`.
-- Updates `threads.model_provider` in `~/.codex/state_5.sqlite` when SQLite is available and unlocked.
+- Updates `model_provider` fields in Codex session JSONL and JSON files under `~/.codex/sessions` and `~/.codex/archived_sessions`.
+- Preserves malformed JSONL lines and provider-free chat records unchanged.
+- Updates SQLite tables with a `model_provider` column under the Codex home when SQLite is available and unlocked.
 - Creates backups under `~/.codex/backups_state/provider-sync/YYYYMMDDHHMMSS`.
 - Skips SQLite with a warning if the database is locked, so install still completes.
 

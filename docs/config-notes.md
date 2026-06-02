@@ -23,13 +23,9 @@ stream_max_retries = 5
 stream_idle_timeout_ms = 300000
 ```
 
-If you want to mimic another installer more closely, override the provider name and env key:
+The stable installer intentionally fixes the provider id to `custom`. If `CODEX_PROVIDER_ID` is set to another value, the installer warns and ignores it so old session metadata, SQLite state, and config output stay aligned.
 
-```bash
-CODEX_PROVIDER_ID="sss" CODEX_PROVIDER_ENV_KEY="SSS_API_KEY" ./install.sh
-```
-
-The API key is still stored in `~/.codex/private.env` instead of being written directly into `.zshrc` or `.bashrc`.
+The API key is stored in `~/.codex/private.env` instead of being written directly into `.zshrc` or `.bashrc`.
 
 ## Baseline usability defaults
 
@@ -42,6 +38,7 @@ The bootstrap also writes:
 - `project_doc_max_bytes = 65536` so larger `AGENTS.md` files are included more completely.
 - Provider retry and stream timeout values are written explicitly for gateway predictability.
 - `approval_policy = "never"` and `sandbox_mode = "danger-full-access"` for fully autonomous local execution.
+- Provider history sync updates Codex session JSONL/JSON files and SQLite `model_provider` columns to the active provider name, with backups first.
 
 Because this is a high-permission setup, the installed `AGENTS.md` and `default.rules` emphasize path checks, secret protection, backups, and narrow verification after edits. Plugin and project-trust overrides are intentionally outside the minimal stable config so provider setup stays predictable.
 

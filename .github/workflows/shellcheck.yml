@@ -19,6 +19,25 @@ jobs:
           bash -n switch.sh
           node --check shared/codex-provider-sync.js
           node --check switch.js
+      - name: Docs page smoke check
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          HTMLParser().feed(Path('docs/index.html').read_text())
+          PY
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const html = fs.readFileSync('docs/index.html', 'utf8');
+          const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]).join('\n');
+          fs.writeFileSync('/tmp/agent-bootstrap-docs-page.js', scripts);
+          NODE
+          node --check /tmp/agent-bootstrap-docs-page.js
+          grep -n 'install-codex.sh' docs/index.html
+          grep -n 'install-codex.ps1' docs/index.html
+          grep -n 'claudecode' docs/index.html
+          grep -n 'openclaw' docs/index.html
+          grep -n 'codexplusplus' docs/index.html
       - name: Codex stable entrypoint dry run
         run: CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --dry-run --skip-codex-install --skip-shell-rc --yes
       - name: Codex Node fallback dry run

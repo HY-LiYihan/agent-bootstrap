@@ -3,6 +3,7 @@
 Agent Bootstrap replaces the core day-to-day provider switching workflow with a repo-native, scriptable CLI:
 
 - Prepare one agent with one command using the same `AGENT`, `AGENT_TOKEN`, and `AGENT_BASE_URL` contract everywhere.
+- Generate one-line commands from the static docs page: `https://hy-liyihan.github.io/agent-bootstrap/`.
 - Store named gateway profiles in `~/.agent-bootstrap/profiles.json`.
 - Apply one profile to Codex, Claude Code, and OpenClaw with `switch.js use <name>`.
 - Add Codex++ as an optional Codex App enhancer with a separate one-line install, without mixing it into provider switching.
