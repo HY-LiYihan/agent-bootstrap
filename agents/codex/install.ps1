@@ -433,6 +433,7 @@ function Install-RulesAndAgents {
         if ((Test-Path $agentsDest) -and (-not $Force)) {
             Write-Warn "AGENTS.md already exists; keeping it. Use -Force to overwrite."
         } else {
+            Invoke-Run "create $ProjectDir" { New-Item -ItemType Directory -Path $ProjectDir -Force | Out-Null }
             Backup-File $agentsDest
             Invoke-Run "copy $agentsSrc to $agentsDest" { Copy-Item -Path $agentsSrc -Destination $agentsDest -Force }
             Write-Ok "Project AGENTS.md installed"
