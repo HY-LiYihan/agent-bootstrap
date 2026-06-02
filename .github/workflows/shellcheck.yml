@@ -196,7 +196,7 @@ jobs:
           $env:CODEX_TOKEN = 'test-token'
           $env:CODEX_API_URL = 'https://example.test/v1'
           $env:CODEX_PROVIDER_ID = 'other'
-          .\agents\codex\install.ps1 -LocalSource . -CodexHome $codex -ProjectDir $project -SkipCodexInstall -SkipProfileUpdate -Yes | Tee-Object -FilePath (Join-Path $tmp.FullName 'out.txt')
+          .\agents\codex\install.ps1 -LocalSource . -CodexHome $codex -ProjectDir $project -SkipCodexInstall -SkipProfileUpdate -Yes *>&1 | Tee-Object -FilePath (Join-Path $tmp.FullName 'out.txt')
           Select-String -Path (Join-Path $tmp.FullName 'out.txt') -Pattern 'Ignoring CODEX_PROVIDER_ID'
           Select-String -Path (Join-Path $codex 'config.toml') -Pattern 'model_provider = "custom"'
           Select-String -Path (Join-Path $codex 'config.toml') -Pattern '\[model_providers\."custom"\]'
