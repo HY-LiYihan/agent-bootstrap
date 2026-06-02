@@ -289,9 +289,10 @@ stream_idle_timeout_ms = 300000
 Codex provider history sync:
 
 - Reads the active `model_provider` from `~/.codex/config.toml`.
-- Updates `model_provider` fields in Codex session JSONL and JSON files under `~/.codex/sessions` and `~/.codex/archived_sessions`.
+- Updates `model_provider` fields in Codex session JSONL and JSON files under `~/.codex/sessions` and `~/.codex/archived_sessions`. These files are the original chat records Codex can reopen, so this is not SQLite-only.
 - Preserves malformed JSONL lines and provider-free chat records unchanged.
-- Updates SQLite tables with a `model_provider` column under the Codex home when SQLite is available and unlocked.
+- Updates SQLite tables with a `model_provider` column under the Codex home when SQLite is available and unlocked. SQLite is treated as an app/cache index and is synced in addition to the original JSON/JSONL records.
+- Verifies after sync that no remaining JSON/JSONL `model_provider` fields or SQLite `model_provider` rows point at another provider. You can run a read-only check with `node shared/codex-provider-sync.js --codex-home "$HOME/.codex" --provider custom --verify-only --json`.
 - Creates backups under `~/.codex/backups_state/provider-sync/YYYYMMDDHHMMSS`.
 - Skips SQLite with a warning if the database is locked, so install still completes.
 

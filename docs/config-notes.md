@@ -38,7 +38,7 @@ The bootstrap also writes:
 - `project_doc_max_bytes = 65536` so larger `AGENTS.md` files are included more completely.
 - Provider retry and stream timeout values are written explicitly for gateway predictability.
 - `approval_policy = "never"` and `sandbox_mode = "danger-full-access"` for fully autonomous local execution.
-- Provider history sync updates Codex session JSONL/JSON files and SQLite `model_provider` columns to the active provider name, with backups first.
+- Provider history sync updates original Codex session JSONL/JSON files and SQLite `model_provider` columns to the active provider name, with backups first and a post-sync verification pass.
 
 Because this is a high-permission setup, the installed `AGENTS.md` and `default.rules` emphasize path checks, secret protection, backups, and narrow verification after edits. Plugin and project-trust overrides are intentionally outside the minimal stable config so provider setup stays predictable.
 

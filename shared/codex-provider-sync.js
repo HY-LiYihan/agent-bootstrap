@@ -126,6 +126,22 @@ function updateProviderFields(value, provider) {
   return changed;
 }
 
+function providerStatsInValue(value, provider) {
+  if (!value || typeof value !== 'object') return { fields: 0, mismatched: 0 };
+  let fields = 0;
+  let mismatched = 0;
+  if (Object.prototype.hasOwnProperty.call(value, 'model_provider')) {
+    fields += 1;
+    if (value.model_provider !== provider) mismatched += 1;
+  }
+  for (const item of Object.values(value)) {
+    const child = providerStatsInValue(item, provider);
+    fields += child.fields;
+    mismatched += child.mismatched;
+  }
+  return { fields, mismatched };
+}
+
 function preserveLineEnding(text) {
   if (text.endsWith('\r\n')) return '\r\n';
   if (text.endsWith('\n')) return '\n';
@@ -195,6 +211,57 @@ function plannedSessionChanges(codexHome, provider) {
     if (change) changes.push(change);
   }
   return changes;
+}
+
+function sessionProviderStats(codexHome, provider) {
+  const roots = [
+    path.join(codexHome, 'sessions'),
+    path.join(codexHome, 'archived_sessions'),
+  ];
+  const stats = {
+    files: 0,
+    fields: 0,
+    mismatchedFiles: 0,
+    mismatchedFields: 0,
+  };
+
+  for (const file of roots.flatMap(walkSessionFiles)) {
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+    if (!text) continue;
+
+    let fileFields = 0;
+    let fileMismatched = 0;
+    if (file.endsWith('.jsonl')) {
+      const lineEnding = preserveLineEnding(text);
+      const body = lineEnding ? text.slice(0, -lineEnding.length) : text;
+      for (const line of body.split(/\r?\n/)) {
+        if (!line) continue;
+        let item;
+        try { item = JSON.parse(line); } catch { continue; }
+        const itemStats = providerStatsInValue(item, provider);
+        fileFields += itemStats.fields;
+        fileMismatched += itemStats.mismatched;
+      }
+    } else {
+      let item;
+      try { item = JSON.parse(text); } catch { item = null; }
+      const itemStats = providerStatsInValue(item, provider);
+      fileFields += itemStats.fields;
+      fileMismatched += itemStats.mismatched;
+    }
+
+    if (fileFields > 0) {
+      stats.files += 1;
+      stats.fields += fileFields;
+    }
+    if (fileMismatched > 0) {
+      stats.mismatchedFiles += 1;
+      stats.mismatchedFields += fileMismatched;
+    }
+  }
+
+  return stats;
 }
 
 function applySessionChanges(changes, dryRun) {
@@ -317,6 +384,7 @@ function defaultLogger(quiet = false) {
 function syncProviderHistory(options = {}) {
   const codexHome = options.codexHome || process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
   const dryRun = Boolean(options.dryRun);
+  const verifyOnly = Boolean(options.verifyOnly);
   const logger = options.logger || defaultLogger(Boolean(options.quiet));
   const configFile = path.join(codexHome, 'config.toml');
 
@@ -326,6 +394,31 @@ function syncProviderHistory(options = {}) {
   }
 
   const provider = options.provider || readProvider(codexHome);
+  if (verifyOnly) {
+    const sessionStats = sessionProviderStats(codexHome, provider);
+    const sqlitePlan = planSqliteChanges(codexHome, provider, logger);
+    const sqliteRemaining = sqlitePlan.changed || 0;
+    const remaining = sessionStats.mismatchedFields + sqliteRemaining;
+    const message = `provider history verification for "${provider}": session_remaining_fields=${sessionStats.mismatchedFields}, sqlite_remaining_rows=${sqliteRemaining}`;
+    if (remaining > 0) logger.warn(message);
+    else logger.ok(message);
+    return {
+      provider,
+      rolloutChanged: 0,
+      sessionFilesChanged: 0,
+      sessionFieldsChanged: 0,
+      sqliteChanged: 0,
+      sqliteStatus: sqlitePlan.status,
+      backupDir: '',
+      verified: remaining === 0,
+      sessionProviderFields: sessionStats.fields,
+      sessionProviderFiles: sessionStats.files,
+      sessionRemainingFields: sessionStats.mismatchedFields,
+      sessionRemainingFiles: sessionStats.mismatchedFiles,
+      sqliteRemainingRows: sqliteRemaining,
+    };
+  }
+
   const changes = plannedSessionChanges(codexHome, provider);
   const sqlitePlan = planSqliteChanges(codexHome, provider, logger);
   const shouldBackup = changes.length > 0 || sqlitePlan.files.length > 0;
@@ -333,10 +426,17 @@ function syncProviderHistory(options = {}) {
 
   applySessionChanges(changes, dryRun);
   const sqlite = applySqliteChanges(sqlitePlan, provider, dryRun, logger);
+  const sessionStats = sessionProviderStats(codexHome, provider);
+  const sqliteVerify = dryRun ? { status: sqlite.status, changed: sqlite.changed } : planSqliteChanges(codexHome, provider, logger);
+  const sqliteRemaining = sqliteVerify.changed || 0;
 
   const action = dryRun ? 'would sync' : 'synced';
   const changedFields = changes.reduce((total, item) => total + item.changedFields, 0);
   logger.ok(`${action} provider history to "${provider}": session_files=${changes.length}, session_fields=${changedFields}, sqlite=${sqlite.changed}`);
+  const remaining = sessionStats.mismatchedFields + sqliteRemaining;
+  const verifyMessage = `provider history verification for "${provider}": session_remaining_fields=${sessionStats.mismatchedFields}, sqlite_remaining_rows=${sqliteRemaining}`;
+  if (remaining > 0) logger.warn(verifyMessage);
+  else logger.ok(verifyMessage);
   if (backup) {
     logger.info(`${dryRun ? 'Would create' : 'Created'} provider-sync backup: ${backup.dir}`);
   }
@@ -349,20 +449,27 @@ function syncProviderHistory(options = {}) {
     sqliteChanged: sqlite.changed,
     sqliteStatus: sqlite.status,
     backupDir: backup ? backup.dir : '',
+    verified: remaining === 0,
+    sessionProviderFields: sessionStats.fields,
+    sessionProviderFiles: sessionStats.files,
+    sessionRemainingFields: sessionStats.mismatchedFields,
+    sessionRemainingFiles: sessionStats.mismatchedFiles,
+    sqliteRemainingRows: sqliteRemaining,
   };
 }
 
 function parseArgs(argv) {
-  const args = { codexHome: '', dryRun: false, json: false, quiet: false, provider: '' };
+  const args = { codexHome: '', dryRun: false, json: false, quiet: false, provider: '', verifyOnly: false };
   for (let i = 0; i < argv.length; i += 1) {
     const item = argv[i];
     if (item === '--codex-home') { args.codexHome = argv[++i] || ''; continue; }
     if (item === '--provider') { args.provider = argv[++i] || ''; continue; }
     if (item === '--dry-run') { args.dryRun = true; continue; }
+    if (item === '--verify-only') { args.verifyOnly = true; continue; }
     if (item === '--json') { args.json = true; continue; }
     if (item === '--quiet') { args.quiet = true; continue; }
     if (item === '-h' || item === '--help') {
-      console.log('Usage: node shared/codex-provider-sync.js [--codex-home DIR] [--provider NAME] [--dry-run] [--json]');
+      console.log('Usage: node shared/codex-provider-sync.js [--codex-home DIR] [--provider NAME] [--dry-run] [--verify-only] [--json]');
       process.exit(0);
     }
     throw new Error(`Unknown option: ${item}`);
@@ -376,6 +483,7 @@ function main() {
     codexHome: args.codexHome || undefined,
     provider: args.provider || undefined,
     dryRun: args.dryRun,
+    verifyOnly: args.verifyOnly,
     quiet: args.json || args.quiet,
   });
   if (args.json) console.log(JSON.stringify(result, null, 2));

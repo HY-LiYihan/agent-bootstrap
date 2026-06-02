@@ -143,6 +143,7 @@ jobs:
           printf '%s\n' '{"payload":{"model_provider":"sss","nested":{"model_provider":"legacy"},"text":"keep json text"}}' > "$json_file"
           sqlite3 "$tmp/state_5.sqlite" 'CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT); INSERT INTO threads VALUES ("t1", "sss");'
           node shared/codex-provider-sync.js --codex-home "$tmp"
+          node shared/codex-provider-sync.js --codex-home "$tmp" --provider custom --verify-only --json > "$tmp/verify.json"
           node - "$rollout" "$json_file" <<'NODE'
           const fs = require('node:fs');
           const lines = fs.readFileSync(process.argv[2], 'utf8').split('\n');
@@ -156,6 +157,13 @@ jobs:
           if (json.payload.model_provider !== 'custom') throw new Error('json provider was not synced');
           if (json.payload.nested.model_provider !== 'custom') throw new Error('nested json provider was not synced');
           if (json.payload.text !== 'keep json text') throw new Error('json text changed');
+          NODE
+          node - "$tmp/verify.json" <<'NODE'
+          const fs = require('node:fs');
+          const result = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (!result.verified) throw new Error('provider sync verification failed');
+          if (result.sessionRemainingFields !== 0) throw new Error('session provider fields still mismatched');
+          if (result.sqliteRemainingRows !== 0) throw new Error('sqlite provider rows still mismatched');
           NODE
           test "$(sqlite3 "$tmp/state_5.sqlite" 'SELECT model_provider FROM threads WHERE id="t1";')" = custom
           test -d "$tmp/backups_state/provider-sync"
