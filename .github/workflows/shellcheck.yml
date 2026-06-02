@@ -112,7 +112,8 @@ jobs:
       - name: Default agent entrypoint dry run
         run: AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_BOOTSTRAP_LOCAL_SOURCE=. AGENT_BOOTSTRAP_INSTALL_ARGS='--dry-run --skip-codex-install --skip-shell-rc --yes' bash -c '. ./agent'
       - name: Claude Code dispatcher dry run
-        run: AGENT=claudecode AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/anthropic AGENT_MODEL=claude-sonnet-4-5 ./install.sh --local . --dry-run --skip-claude-install | grep -n 'Would set Claude default model: claude-sonnet-4-5'
+        run: |
+          AGENT=claudecode AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/anthropic AGENT_MODEL=claude-sonnet-4-5 ./install.sh --local . --dry-run --skip-claude-install | grep -n 'Would set Claude default model: claude-sonnet-4-5'
       - name: Claude Code model config generation
         run: |
           tmp="$(mktemp -d)"
