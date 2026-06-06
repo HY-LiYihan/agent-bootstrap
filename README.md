@@ -36,25 +36,22 @@ The stable command has no bundled token and no bundled private base URL. Both va
 
 ## Safety And Restore
 
-Before writing Codex files, the Codex installer creates a restore snapshot by default:
+Before writing Codex files, the Codex installer backs up the whole Codex home by default:
 
 ```text
-~/.codex/backups_state/install/YYYYMMDDHHMMSS
+~/.codex.backup.YYYYMMDDHHMMSS
 ```
 
-The snapshot covers the files this installer touches:
+The backup contains a full copy of:
 
-- `~/.codex/config.toml`
-- `~/.codex/private.env`
-- `~/.codex/rules/default.rules`
-- `~/.codex/state_5.sqlite`
-- `PROJECT_DIR/AGENTS.md`
-- the detected shell or PowerShell profile
+- `~/.codex/`
+
+By default, the installer does not modify project `AGENTS.md`, Codex rules, provider history, or an existing `~/.codex/config.toml`.
 
 Restore on macOS/Ubuntu/Linux:
 
 ```bash
-CODEX_HOME="$HOME/.codex" CODEX_PROJECT_DIR="$PWD" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.sh)" -- --restore "$HOME/.codex/backups_state/install/YYYYMMDDHHMMSS"
+CODEX_HOME="$HOME/.codex" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.sh)" -- --restore "$HOME/.codex.backup.YYYYMMDDHHMMSS"
 ```
 
 Restore on Windows PowerShell:
@@ -73,13 +70,19 @@ Disable the pre-install restore snapshot only when you already have an external 
 .\install-codex.ps1 # default creates a backup; use agents\codex\install.ps1 -NoInstallBackup only for local advanced use
 ```
 
+After confirming Codex works, delete macOS/Linux Codex install backups with:
+
+```bash
+find "$HOME" -maxdepth 1 -type d -name '.codex.backup.*' -prune -exec rm -rf {} +
+```
+
 ## Download Reliability
 
 The public entrypoints download this repository through GitHub codeload branch archives, then validate the archive before extraction. `stable` and `latest` are maintained as branches, not moving tags, to avoid raw GitHub tag-cache ambiguity.
 
 ## Supported Agents
 
-- `codex`: configures OpenAI Codex CLI with a custom gateway provider.
+- `codex`: installs or verifies OpenAI Codex CLI, writes API env, and preserves existing Codex config by default.
 - `claudecode`: installs/configures Claude Code with `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL`.
 - `openclaw`: writes OpenClaw model and auth JSON config.
 - `hermes`: installs/configures [NousResearch Hermes Agent](https://github.com/NousResearch/hermes-agent) with a custom OpenAI-compatible gateway.
@@ -104,7 +107,7 @@ Recommended stable Codex-only install:
 CODEX_TOKEN="YOUR_TOKEN" CODEX_API_URL="YOUR_BASE_URL" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.sh)"
 ```
 
-This path intentionally does one thing: install or verify Codex CLI, write a `custom` provider config, store the token in `~/.codex/private.env`, and sync older Codex session files plus SQLite provider fields to the active provider name. On a fresh machine, the installer first tries Bun, falls back to npm, and can install Node.js through NVM when npm is missing. Existing marketplace and plugin blocks in `~/.codex/config.toml` are preserved by default.
+This path intentionally does the stable minimum: detect the environment, back up the whole `~/.codex` folder, install or verify Codex CLI, store API environment variables in `~/.codex/private.env`, and add a shell startup source line. If `~/.codex/config.toml` already exists, it is left unchanged. If it does not exist, the installer leaves it absent so Codex uses official defaults. On a fresh machine, the installer first tries Bun, falls back to npm, and can install Node.js through NVM when npm is missing.
 
 There are also three broader entry styles:
 

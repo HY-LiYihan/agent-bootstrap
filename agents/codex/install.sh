@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Codex Bootstrap
-# Safe-ish GitHub curl entrypoint for installing Codex and applying personal config.
+# Safe-ish GitHub curl entrypoint for installing Codex and wiring API env.
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -43,9 +43,12 @@ FORCE=0
 SKIP_CODEX_INSTALL=0
 SKIP_SHELL_RC=0
 INSTALL_BUN=1
-SYNC_PROVIDER_HISTORY="${CODEX_SYNC_PROVIDER_HISTORY:-1}"
+SYNC_PROVIDER_HISTORY="${CODEX_SYNC_PROVIDER_HISTORY:-0}"
 INSTALL_BACKUP="${CODEX_INSTALL_BACKUP:-1}"
 INSTALL_BACKUP_DIR="${CODEX_INSTALL_BACKUP_DIR:-}"
+WRITE_MANAGED_CONFIG="${CODEX_WRITE_MANAGED_CONFIG:-0}"
+INSTALL_TEMPLATES="${CODEX_INSTALL_TEMPLATES:-0}"
+CLEANUP_BACKUPS=0
 RESTORE_FROM=""
 OS_ID=""
 OS_NAME=""
@@ -64,16 +67,17 @@ NC='\033[0m'
 
 print_banner() {
   printf "\n"
-  printf "%b+--------------------------------------------------+%b\n" "$CYAN" "$NC"
-  printf "%b|%b %bCodex Bootstrap%b                                 %b|%b\n" "$CYAN" "$NC" "$BOLD" "$NC" "$CYAN" "$NC"
-  printf "%b|%b custom provider + colorful one-click setup     %b|%b\n" "$CYAN" "$NC" "$CYAN" "$NC"
-  printf "%b+--------------------------------------------------+%b\n\n" "$CYAN" "$NC"
+  printf "%b╔══════════════════════════════════════════════════╗%b\n" "$CYAN" "$NC"
+  printf "%b║%b %bCodex Bootstrap%b                                  %b║%b\n" "$CYAN" "$NC" "$BOLD" "$NC" "$CYAN" "$NC"
+  printf "%b║%b install + backup + API env, config-preserving  %b║%b\n" "$CYAN" "$NC" "$CYAN" "$NC"
+  printf "%b╚══════════════════════════════════════════════════╝%b\n\n" "$CYAN" "$NC"
 }
 
-log_step() { printf "\n%b[%s]%b %b%s%b\n" "$MAGENTA" "$1" "$NC" "$BOLD" "$2" "$NC"; }
+log_step() { printf "\n%b▶ %s%b %b%s%b\n" "$MAGENTA" "$1" "$NC" "$BOLD" "$2" "$NC"; }
 log_ok() { printf "%b[OK]%b %s\n" "$GREEN" "$NC" "$1"; }
 log_warn() { printf "%b[WARN]%b %s\n" "$YELLOW" "$NC" "$1"; }
 log_info() { printf "%b[INFO]%b %s\n" "$BLUE" "$NC" "$1"; }
+log_keep() { printf "%b[KEEP]%b %s\n" "$CYAN" "$NC" "$1"; }
 fail() { printf "%b[ERROR]%b %s\n" "$RED" "$NC" "$1" >&2; exit 1; }
 
 usage() {
@@ -84,8 +88,8 @@ Usage:
   CODEX_TOKEN="..." CODEX_API_URL="https://gateway.example.com/v1" bash -c "\$(curl -fsSL <install-url>)"
 
 Options:
-  --profile NAME       Profile to apply from profiles/NAME.env (default: ${BOOTSTRAP_PROFILE})
-  --project DIR        Project directory for AGENTS.md generation (default: current directory)
+  --profile NAME       Profile to apply when --write-managed-config is used (default: ${BOOTSTRAP_PROFILE})
+  --project DIR        Project directory for optional AGENTS.md generation (default: current directory)
   --repo OWNER/REPO    GitHub repo to download templates from (default: ${BOOTSTRAP_REPO})
   --ref REF            Git ref/tag/branch to download templates from (default: ${BOOTSTRAP_REF})
   --local DIR          Use a local checkout instead of downloading from GitHub
@@ -97,15 +101,18 @@ Options:
   --no-install-backup  Do not create a pre-install restore snapshot
   --backup-dir DIR     Write the pre-install restore snapshot to DIR
   --restore DIR        Restore files from a previous install backup and exit
-  --sync-provider-history     Sync old Codex sessions to the selected model_provider (default)
+  --cleanup-backups    Delete ~/.codex.backup.* backup folders and exit
+  --write-managed-config      Write the legacy managed custom-provider config (default: off)
+  --install-templates         Install templates/default.rules and project AGENTS.md (default: off)
+  --sync-provider-history     Sync old Codex sessions to the selected model_provider (default: off)
   --no-sync-provider-history  Skip provider history sync
   --no-bun             Do not install Bun automatically; use npm if available
   --no-node            Do not install Node.js with NVM when npm is missing
   -h, --help           Show this help
 
 Environment:
-  CODEX_TOKEN or OPENAI_API_KEY       API key written to the provider env key
-  CODEX_API_URL or OPENAI_BASE_URL    API base URL written to [model_providers.custom]
+  CODEX_TOKEN or OPENAI_API_KEY       API key written to ~/.codex/private.env
+  CODEX_API_URL or OPENAI_BASE_URL    API base URL written to ~/.codex/private.env
   CODEX_PROVIDER_ENV_KEY              Provider env key (default: ${PROVIDER_ENV_KEY})
   CODEX_MODEL                         Default model (default: ${MODEL})
   CODEX_REASONING_EFFORT              Reasoning effort (default: ${REASONING_EFFORT})
@@ -121,8 +128,10 @@ Environment:
   CODEX_STREAM_IDLE_TIMEOUT_MS        Provider stream idle timeout ms (default: ${STREAM_IDLE_TIMEOUT_MS})
   CODEX_SECURITY_PROFILE              max or safe (default: ${SECURITY_PROFILE})
   CODEX_SYNC_PROVIDER_HISTORY         1 or 0 (default: ${SYNC_PROVIDER_HISTORY})
-  CODEX_INSTALL_BACKUP                1 or 0; create pre-install restore snapshot (default: ${INSTALL_BACKUP})
+  CODEX_INSTALL_BACKUP                1 or 0; backup the whole ~/.codex folder (default: ${INSTALL_BACKUP})
   CODEX_INSTALL_BACKUP_DIR            Optional explicit backup directory
+  CODEX_WRITE_MANAGED_CONFIG          1 or 0; write legacy managed config (default: ${WRITE_MANAGED_CONFIG})
+  CODEX_INSTALL_TEMPLATES             1 or 0; install rules/AGENTS templates (default: ${INSTALL_TEMPLATES})
   CODEX_NPM_REGISTRY                  npm fallback registry (default: ${NPM_REGISTRY})
   CODEX_INSTALL_NODE                  1 or 0; install Node.js with NVM if npm is missing (default: ${INSTALL_NODE})
   CODEX_NODE_VERSION                  Node.js version for NVM fallback (default: ${NODE_VERSION})
@@ -149,6 +158,9 @@ while [[ $# -gt 0 ]]; do
     --no-install-backup) INSTALL_BACKUP=0; shift ;;
     --backup-dir) INSTALL_BACKUP_DIR="${2:?missing backup dir}"; shift 2 ;;
     --restore) RESTORE_FROM="${2:?missing backup dir}"; shift 2 ;;
+    --cleanup-backups) CLEANUP_BACKUPS=1; shift ;;
+    --write-managed-config) WRITE_MANAGED_CONFIG=1; shift ;;
+    --install-templates) INSTALL_TEMPLATES=1; shift ;;
     --sync-provider-history) SYNC_PROVIDER_HISTORY=1; shift ;;
     --no-sync-provider-history) SYNC_PROVIDER_HISTORY=0; shift ;;
     --no-bun) INSTALL_BUN=0; shift ;;
@@ -204,6 +216,16 @@ validate_required_inputs() {
     1|true|yes|on) INSTALL_BACKUP=1 ;;
     0|false|no|off) INSTALL_BACKUP=0 ;;
     *) fail "Invalid CODEX_INSTALL_BACKUP: $INSTALL_BACKUP. Use 1 or 0." ;;
+  esac
+  case "$WRITE_MANAGED_CONFIG" in
+    1|true|yes|on) WRITE_MANAGED_CONFIG=1 ;;
+    0|false|no|off) WRITE_MANAGED_CONFIG=0 ;;
+    *) fail "Invalid CODEX_WRITE_MANAGED_CONFIG: $WRITE_MANAGED_CONFIG. Use 1 or 0." ;;
+  esac
+  case "$INSTALL_TEMPLATES" in
+    1|true|yes|on) INSTALL_TEMPLATES=1 ;;
+    0|false|no|off) INSTALL_TEMPLATES=0 ;;
+    *) fail "Invalid CODEX_INSTALL_TEMPLATES: $INSTALL_TEMPLATES. Use 1 or 0." ;;
   esac
 }
 
@@ -604,71 +626,105 @@ copy_if_exists() {
   fi
 }
 
+copy_dir_contents() {
+  local src="$1"
+  local dest="$2"
+  mkdir -p "$dest"
+  if command_exists rsync; then
+    rsync -a "$src/" "$dest/"
+  else
+    cp -a "$src/." "$dest/"
+  fi
+}
+
 create_install_backup() {
   [[ "$INSTALL_BACKUP" == "1" ]] || return 0
-  log_step "Safety" "Create pre-install restore snapshot"
+  log_step "1/4" "Backup existing Codex home"
   if [[ "$DRY_RUN" == "1" ]]; then
-    printf "DRY-RUN: create restore snapshot for %s and %s\n" "$CODEX_HOME" "$PROJECT_DIR"
+    if [[ -d "$CODEX_HOME" ]]; then
+      printf "DRY-RUN: copy %s to %s\n" "$CODEX_HOME" "${INSTALL_BACKUP_DIR:-$HOME/.codex.backup.$(date +%Y%m%d%H%M%S)}"
+    else
+      printf "DRY-RUN: no existing Codex home to back up: %s\n" "$CODEX_HOME"
+    fi
     return 0
   fi
 
-  local backup_dir shell_rc
+  local backup_dir shell_rc size
   shell_rc="$(detect_shell_rc)"
   if [[ -n "$INSTALL_BACKUP_DIR" ]]; then
     backup_dir="$INSTALL_BACKUP_DIR"
   else
-    backup_dir="$CODEX_HOME/backups_state/install/$(date +%Y%m%d%H%M%S)"
+    backup_dir="$HOME/.codex.backup.$(date +%Y%m%d%H%M%S)"
   fi
-  mkdir -p "$backup_dir/codex" "$backup_dir/project" "$backup_dir/shell"
+  mkdir -p "$backup_dir"
 
   {
     printf "created_at=%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf "codex_home=%s\n" "$CODEX_HOME"
-    printf "project_dir=%s\n" "$PROJECT_DIR"
     printf "shell_rc=%s\n" "$shell_rc"
     printf "restore_hint=%s --restore %s\n" "$0" "$backup_dir"
+    printf "cleanup_hint=find \"%s\" -maxdepth 1 -type d -name '.codex.backup.*' -prune -exec rm -rf {} +\n" "$HOME"
   } > "$backup_dir/MANIFEST.txt"
 
-  copy_if_exists "$CONFIG_FILE" "$backup_dir/codex/config.toml"
-  copy_if_exists "$PRIVATE_ENV_FILE" "$backup_dir/codex/private.env"
-  copy_if_exists "$CODEX_HOME/rules/default.rules" "$backup_dir/codex/rules/default.rules"
-  copy_if_exists "$PROJECT_DIR/AGENTS.md" "$backup_dir/project/AGENTS.md"
-  copy_if_exists "$shell_rc" "$backup_dir/shell/$(basename "$shell_rc")"
-
-  if [[ -f "$CODEX_HOME/state_5.sqlite" ]]; then
-    mkdir -p "$backup_dir/codex"
-    if command_exists sqlite3; then
-      sqlite3 "$CODEX_HOME/state_5.sqlite" ".timeout 5000" ".backup '$backup_dir/codex/state_5.sqlite'" || copy_if_exists "$CODEX_HOME/state_5.sqlite" "$backup_dir/codex/state_5.sqlite"
-    else
-      copy_if_exists "$CODEX_HOME/state_5.sqlite" "$backup_dir/codex/state_5.sqlite"
-    fi
+  if [[ -d "$CODEX_HOME" ]]; then
+    copy_dir_contents "$CODEX_HOME" "$backup_dir/.codex"
+    size="$(du -sh "$backup_dir" 2>/dev/null | awk '{print $1}' || printf unknown)"
+    log_ok "Codex home backed up: $backup_dir ($size)"
+  else
+    log_info "No existing Codex home found; created empty backup marker: $backup_dir"
   fi
 
+  mkdir -p "$CODEX_HOME"
   printf "%s\n" "$backup_dir" > "$CODEX_HOME/.last-install-backup"
-  log_ok "Restore snapshot created: $backup_dir"
   log_info "Restore with: $0 --restore '$backup_dir'"
 }
 
 restore_install_backup() {
   local backup_dir="$1"
   [[ -d "$backup_dir" ]] || fail "Restore backup not found: $backup_dir"
-  log_step "Restore" "Restore Codex files from $backup_dir"
-  run mkdir -p "$CODEX_HOME" "$CODEX_HOME/rules" "$PROJECT_DIR"
-  [[ -f "$backup_dir/codex/config.toml" ]] && run cp "$backup_dir/codex/config.toml" "$CONFIG_FILE"
-  [[ -f "$backup_dir/codex/private.env" ]] && run cp "$backup_dir/codex/private.env" "$PRIVATE_ENV_FILE"
-  [[ -f "$backup_dir/codex/private.env" && "$DRY_RUN" != "1" ]] && chmod 600 "$PRIVATE_ENV_FILE" 2>/dev/null || true
-  [[ -f "$backup_dir/codex/rules/default.rules" ]] && run cp "$backup_dir/codex/rules/default.rules" "$CODEX_HOME/rules/default.rules"
-  if [[ -f "$backup_dir/codex/state_5.sqlite" ]]; then
+  log_step "Restore" "Restore Codex home from $backup_dir"
+  if [[ -d "$backup_dir/.codex" ]]; then
     if [[ "$DRY_RUN" == "1" ]]; then
-      run cp "$backup_dir/codex/state_5.sqlite" "$CODEX_HOME/state_5.sqlite"
-      run rm -f "$CODEX_HOME/state_5.sqlite-wal" "$CODEX_HOME/state_5.sqlite-shm"
+      printf "DRY-RUN: restore %s/.codex to %s\n" "$backup_dir" "$CODEX_HOME"
     else
-      rm -f "$CODEX_HOME/state_5.sqlite-wal" "$CODEX_HOME/state_5.sqlite-shm"
-      cp "$backup_dir/codex/state_5.sqlite" "$CODEX_HOME/state_5.sqlite"
+      mkdir -p "$CODEX_HOME"
+      copy_dir_contents "$backup_dir/.codex" "$CODEX_HOME"
+      chmod 600 "$PRIVATE_ENV_FILE" 2>/dev/null || true
     fi
+  else
+    run mkdir -p "$CODEX_HOME" "$CODEX_HOME/rules" "$PROJECT_DIR"
+    [[ -f "$backup_dir/codex/config.toml" ]] && run cp "$backup_dir/codex/config.toml" "$CONFIG_FILE"
+    [[ -f "$backup_dir/codex/private.env" ]] && run cp "$backup_dir/codex/private.env" "$PRIVATE_ENV_FILE"
+    [[ -f "$backup_dir/codex/private.env" && "$DRY_RUN" != "1" ]] && chmod 600 "$PRIVATE_ENV_FILE" 2>/dev/null || true
+    [[ -f "$backup_dir/codex/rules/default.rules" ]] && run cp "$backup_dir/codex/rules/default.rules" "$CODEX_HOME/rules/default.rules"
+    if [[ -f "$backup_dir/codex/state_5.sqlite" ]]; then
+      if [[ "$DRY_RUN" == "1" ]]; then
+        run cp "$backup_dir/codex/state_5.sqlite" "$CODEX_HOME/state_5.sqlite"
+        run rm -f "$CODEX_HOME/state_5.sqlite-wal" "$CODEX_HOME/state_5.sqlite-shm"
+      else
+        rm -f "$CODEX_HOME/state_5.sqlite-wal" "$CODEX_HOME/state_5.sqlite-shm"
+        cp "$backup_dir/codex/state_5.sqlite" "$CODEX_HOME/state_5.sqlite"
+      fi
+    fi
+    [[ -f "$backup_dir/project/AGENTS.md" ]] && run cp "$backup_dir/project/AGENTS.md" "$PROJECT_DIR/AGENTS.md"
   fi
-  [[ -f "$backup_dir/project/AGENTS.md" ]] && run cp "$backup_dir/project/AGENTS.md" "$PROJECT_DIR/AGENTS.md"
   log_ok "Restore completed from: $backup_dir"
+}
+
+cleanup_backups() {
+  log_step "Cleanup" "Delete Codex backup folders"
+  local count
+  count="$(find "$HOME" -maxdepth 1 -type d -name '.codex.backup.*' -prune 2>/dev/null | wc -l | tr -d ' ')"
+  if [[ "$count" == "0" ]]; then
+    log_info "No ~/.codex.backup.* folders found"
+    return 0
+  fi
+  if [[ "$DRY_RUN" == "1" ]]; then
+    find "$HOME" -maxdepth 1 -type d -name '.codex.backup.*' -prune -print
+    return 0
+  fi
+  find "$HOME" -maxdepth 1 -type d -name '.codex.backup.*' -prune -exec rm -rf {} +
+  log_ok "Deleted $count Codex backup folder(s)"
 }
 
 preserve_config_tail() {
@@ -681,25 +737,41 @@ preserve_config_tail() {
 
 write_private_env() {
   [[ -n "$API_KEY" ]] || fail "Missing CODEX_TOKEN or OPENAI_API_KEY"
-  log_step "4/7" "Write private API key"
+  log_step "3/4" "Configure API environment"
   log_info "Secret file: $PRIVATE_ENV_FILE"
-  log_info "Provider env key: $PROVIDER_ENV_KEY"
+  log_info "Exports: OPENAI_API_KEY, OPENAI_BASE_URL, CODEX_API_KEY, CODEX_API_URL"
   run mkdir -p "$(dirname "$PRIVATE_ENV_FILE")"
   if [[ "$DRY_RUN" == "1" ]]; then
-    printf "DRY-RUN: write %s=%s to %s\n" "$PROVIDER_ENV_KEY" "$(mask_secret "$API_KEY")" "$PRIVATE_ENV_FILE"
+    printf "DRY-RUN: write API env with key=%s base_url=%s to %s\n" "$(mask_secret "$API_KEY")" "$(mask_url "$API_BASE_URL")" "$PRIVATE_ENV_FILE"
   else
     umask 077
     cat > "$PRIVATE_ENV_FILE" <<ENVEOF
 # Managed by agent-bootstrap. Do not commit this file.
-export $PROVIDER_ENV_KEY="$API_KEY"
+export OPENAI_API_KEY="$API_KEY"
+export OPENAI_BASE_URL="$API_BASE_URL"
+export CODEX_API_KEY="$API_KEY"
+export CODEX_API_URL="$API_BASE_URL"
 ENVEOF
+    if [[ "$PROVIDER_ENV_KEY" != "OPENAI_API_KEY" && "$PROVIDER_ENV_KEY" != "CODEX_API_KEY" ]]; then
+      printf 'export %s="%s"\n' "$PROVIDER_ENV_KEY" "$API_KEY" >> "$PRIVATE_ENV_FILE"
+    fi
     chmod 600 "$PRIVATE_ENV_FILE"
   fi
   log_ok "Private env ready: $PRIVATE_ENV_FILE"
 }
 
+preserve_or_default_config() {
+  log_step "4/4" "Preserve Codex configuration"
+  run mkdir -p "$CODEX_HOME"
+  if [[ -f "$CONFIG_FILE" ]]; then
+    log_keep "Existing config.toml found; leaving it unchanged: $CONFIG_FILE"
+  else
+    log_keep "No config.toml found; leaving it absent so Codex uses official defaults"
+  fi
+}
+
 write_config() {
-  log_step "5/7" "Write Codex custom provider config"
+  log_step "Managed config" "Write legacy custom-provider config"
   run mkdir -p "$CODEX_HOME"
   backup_file "$CONFIG_FILE"
   local provider_escaped env_key_escaped model_escaped effort_escaped verbosity_escaped summary_escaped web_search_escaped url_escaped
@@ -790,7 +862,7 @@ TOML
 sync_provider_history() {
   local source_dir="$1"
   [[ "$SYNC_PROVIDER_HISTORY" == "1" ]] || return 0
-  log_step "6/7" "Sync Codex provider history"
+  log_step "Provider sync" "Sync Codex provider history"
 
   local sync_script="$source_dir/shared/codex-provider-sync.js"
   if [[ ! -f "$sync_script" ]]; then
@@ -815,7 +887,7 @@ install_rules_and_templates() {
   local agents_src="$source_dir/templates/AGENTS.md"
 
   if [[ -f "$rules_src" ]]; then
-    log_step "7/7" "Install rules and shell integration"
+    log_step "Templates" "Install optional rules and project AGENTS.md"
     run mkdir -p "$CODEX_HOME/rules"
     backup_file "$CODEX_HOME/rules/default.rules"
     run cp "$rules_src" "$CODEX_HOME/rules/default.rules"
@@ -853,9 +925,25 @@ setup_shell_rc() {
   log_ok "Shell startup configured: $shell_rc"
 }
 
+print_completion() {
+  local shell_rc
+  shell_rc="$(detect_shell_rc)"
+  printf "\n%b╔══════════════════════════════════════════════════╗%b\n" "$GREEN" "$NC"
+  printf "%b║%b %bCodex ready%b                                      %b║%b\n" "$GREEN" "$NC" "$BOLD" "$NC" "$GREEN" "$NC"
+  printf "%b╚══════════════════════════════════════════════════╝%b\n" "$GREEN" "$NC"
+  log_info "Reload shell env with: source $shell_rc"
+  log_info "Then try: codex --search"
+  log_info "After confirming Codex works, remove install backups with:"
+  printf "  %bfind \"%s\" -maxdepth 1 -type d -name '.codex.backup.*' -prune -exec rm -rf {} +%b\n" "$CYAN" "$HOME" "$NC"
+}
+
 main() {
   print_banner
   detect_platform
+  if [[ "$CLEANUP_BACKUPS" == "1" ]]; then
+    cleanup_backups
+    return 0
+  fi
   if [[ -n "$RESTORE_FROM" ]]; then
     restore_install_backup "$RESTORE_FROM"
     return 0
@@ -863,43 +951,52 @@ main() {
 
   validate_env_key
   validate_required_inputs
-  log_step "1/7" "Inspect system and bootstrap settings"
+  log_step "0/4" "Detect environment"
   log_info "OS: $OS_NAME ($OS_ID/$ARCH_NAME)"
   log_info "Shell: ${SHELL_NAME:-unknown}, rc: $(detect_shell_rc)"
-  log_info "Profile: $BOOTSTRAP_PROFILE"
-  log_info "Provider: $PROVIDER_ID"
-  [[ -n "${CODEX_PROVIDER_ID:-}" && "${CODEX_PROVIDER_ID:-}" != "$PROVIDER_ID" ]] && log_warn "Ignoring CODEX_PROVIDER_ID; stable Codex provider is fixed to $PROVIDER_ID"
-  log_info "Provider env key: $PROVIDER_ENV_KEY"
-  log_info "Model: $MODEL"
-  log_info "Reasoning effort: $REASONING_EFFORT"
-  log_info "Model verbosity: $MODEL_VERBOSITY"
-  log_info "Reasoning summary: $REASONING_SUMMARY"
-  log_info "Web search: $WEB_SEARCH"
-  log_info "Project doc max bytes: $PROJECT_DOC_MAX_BYTES"
-  log_info "Subagents: max_threads=$AGENTS_MAX_THREADS max_depth=$AGENTS_MAX_DEPTH job_timeout_s=$AGENTS_JOB_MAX_RUNTIME_SECONDS"
-  log_info "Provider retries: request=$REQUEST_MAX_RETRIES stream=$STREAM_MAX_RETRIES idle_timeout_ms=$STREAM_IDLE_TIMEOUT_MS"
-  log_info "Security profile: $SECURITY_PROFILE"
+  if command_exists codex; then
+    log_ok "Codex installed: $(command -v codex)"
+    codex --version 2>/dev/null | sed "s/^/[INFO] Codex version: /" || true
+  else
+    log_warn "Codex CLI not found; installer will install @openai/codex"
+  fi
+  if [[ -f "$CONFIG_FILE" ]]; then
+    log_keep "Existing config will be preserved: $CONFIG_FILE"
+  else
+    log_keep "No config found; official Codex defaults will be used"
+  fi
   log_info "Install backup: $INSTALL_BACKUP"
+  log_info "Managed config: $WRITE_MANAGED_CONFIG"
+  log_info "Templates: $INSTALL_TEMPLATES"
   log_info "Provider history sync: $SYNC_PROVIDER_HISTORY"
   log_info "Base URL: $(mask_url "$API_BASE_URL")"
   [[ -n "$API_KEY" ]] && log_info "API key: $(mask_secret "$API_KEY")"
 
-  local source_dir
-  log_step "2/7" "Load profile and template assets"
-  source_dir="$(download_source)"
-  load_profile "$source_dir"
+  local source_dir=""
+  if [[ "$WRITE_MANAGED_CONFIG" == "1" || "$INSTALL_TEMPLATES" == "1" || "$SYNC_PROVIDER_HISTORY" == "1" ]]; then
+    log_step "Assets" "Load optional bootstrap assets"
+    source_dir="$(download_source)"
+    [[ "$WRITE_MANAGED_CONFIG" == "1" ]] && load_profile "$source_dir"
+  fi
+
   create_install_backup
-  log_step "3/7" "Install or verify Codex CLI"
+  log_step "2/4" "Install or verify Codex CLI"
   install_codex
   write_private_env
-  write_config
-  sync_provider_history "$source_dir"
-  install_rules_and_templates "$source_dir"
+  if [[ "$WRITE_MANAGED_CONFIG" == "1" ]]; then
+    write_config
+  else
+    preserve_or_default_config
+  fi
+  if [[ "$SYNC_PROVIDER_HISTORY" == "1" ]]; then
+    sync_provider_history "$source_dir"
+  fi
+  if [[ "$INSTALL_TEMPLATES" == "1" ]]; then
+    install_rules_and_templates "$source_dir"
+  fi
   setup_shell_rc
 
-  log_ok "Codex bootstrap completed"
-  log_info "Reload shell env with: source $(detect_shell_rc)"
-  log_info "Try: codex --search"
+  print_completion
 }
 
 main "$@"

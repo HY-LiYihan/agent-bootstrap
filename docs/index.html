@@ -338,7 +338,7 @@
           <input id="codexAdvanced" type="checkbox">
           <span>
             <strong data-i18n="advancedTitle">Codex advanced options</strong>
-            <span data-i18n="advancedText">Use YOLO autonomy plus usability defaults. Without this, Codex uses official safe approval/sandbox defaults while still merging provider to custom.</span>
+        <span data-i18n="advancedText">Optional legacy mode that writes a managed custom-provider config. Leave off to preserve existing config or official defaults.</span>
           </span>
         </label>
       </div>
@@ -363,7 +363,7 @@
     <section class="cards" aria-label="Documentation links">
       <div class="mini-card">
         <strong data-i18n="cardCodexTitle">Codex stable path</strong>
-        <span data-i18n="cardCodexText">Installs or verifies Codex CLI, writes model_provider = custom, stores the key in private.env, and syncs provider history.</span>
+        <span data-i18n="cardCodexText">Installs or verifies Codex CLI, backs up ~/.codex, stores API env in private.env, and preserves config by default.</span>
       </div>
       <div class="mini-card">
         <strong data-i18n="cardHermesTitle">Hermes Agent</strong>
@@ -400,7 +400,7 @@
         stableTitle: 'Stable target',
         stableText: 'Commands use HY-LiYihan/agent-bootstrap@stable, so the public command does not need to change when the implementation is updated.',
         agentTitle: 'Agent',
-        codexSmall: 'Provider merged to custom by default.',
+        codexSmall: 'Config-preserving Codex install.',
         claudeSmall: 'API-token based Claude Code config.',
         openclawSmall: 'Writes OpenClaw auth profile config.',
         hermesSmall: 'Writes Hermes model and OpenAI-compatible endpoint.',
@@ -412,13 +412,13 @@
         baseLabel: 'Base URL',
         modelLabel: 'Default model',
         optionalHint: 'optional',
-        advancedTitle: 'Codex advanced options',
-        advancedText: 'Use YOLO autonomy plus usability defaults. Without this, Codex uses official safe approval/sandbox defaults while still merging provider to custom.',
+        advancedTitle: 'Legacy managed config',
+        advancedText: 'Optional mode that writes a managed custom-provider config. Leave off to preserve existing config or official defaults.',
         copyButton: 'Copy command',
         resetButton: 'Reset',
         explainTitle: 'What this command does',
         cardCodexTitle: 'Codex stable path',
-        cardCodexText: 'Installs or verifies Codex CLI, writes model_provider = custom, stores the key in private.env, and syncs provider history.',
+        cardCodexText: 'Installs or verifies Codex CLI, backs up ~/.codex, stores API env in private.env, and preserves config by default.',
         cardHermesTitle: 'Hermes Agent',
         cardHermesText: 'Uses the official installer on macOS/Linux and writes ~/.hermes/config.yaml plus ~/.hermes/.env for custom OpenAI-compatible gateways.',
         cardDocsTitle: 'More docs',
@@ -434,15 +434,15 @@
         notes: {
           codexBasic: [
             'Installs or verifies Codex CLI through the stable Codex entrypoint.',
-            'Writes the provider as custom and syncs old Codex session JSON/JSONL and SQLite provider fields.',
-            'Uses official safe approval and sandbox defaults by setting CODEX_SECURITY_PROFILE=safe.',
-            'Stores the key in ~/.codex/private.env instead of config.toml.'
+            'Backs up the whole ~/.codex folder before writing installer-managed files.',
+            'Stores API env in ~/.codex/private.env instead of config.toml.',
+            'Leaves existing config.toml unchanged; if config.toml is missing, Codex uses official defaults.'
           ],
           codexAdvanced: [
             'Installs or verifies Codex CLI through the stable Codex entrypoint.',
-            'Writes the provider as custom and syncs old Codex session JSON/JSONL and SQLite provider fields.',
-            'Enables YOLO autonomy with approval_policy=never and sandbox_mode=danger-full-access.',
-            'Also uses the stable usability defaults: gpt-5.5, high reasoning, live web search, retries, and larger project docs.'
+            'Backs up the whole ~/.codex folder before writing installer-managed files.',
+            'Explicitly writes the legacy managed custom-provider config.',
+            'Use this only when you want the installer to own config.toml.'
           ],
           claudecode: [
             'Installs or verifies Claude Code and writes API-token based settings.',
@@ -467,7 +467,7 @@
         stableTitle: '稳定入口',
         stableText: '命令使用 HY-LiYihan/agent-bootstrap@stable，后续实现更新时，公开安装命令不需要变化。',
         agentTitle: 'Agent',
-        codexSmall: '默认把 provider 统一为 custom。',
+        codexSmall: '保留现有配置的 Codex 安装。',
         claudeSmall: '配置 API-token 形态的 Claude Code。',
         openclawSmall: '写入 OpenClaw 认证配置。',
         hermesSmall: '写入 Hermes 模型和 OpenAI 兼容端点。',
@@ -479,13 +479,13 @@
         baseLabel: 'Base URL',
         modelLabel: '默认模型',
         optionalHint: '可选',
-        advancedTitle: 'Codex 高级选项',
-        advancedText: '启用 YOLO 自主模式和易用性默认配置。不勾选时 Codex 使用官方安全 approval/sandbox 默认值，但仍会把 provider 统一为 custom。',
+        advancedTitle: '旧版托管配置',
+        advancedText: '可选：写入 installer 托管的 custom-provider config。默认不勾选，保留已有配置或官方默认。',
         copyButton: '复制命令',
         resetButton: '重置',
         explainTitle: '这条命令会做什么',
         cardCodexTitle: 'Codex 稳定路径',
-        cardCodexText: '安装或确认 Codex CLI，写入 model_provider = custom，把 key 存入 private.env，并同步历史 provider。',
+        cardCodexText: '安装或确认 Codex CLI，备份 ~/.codex，把 API env 写入 private.env，并默认保留 config。',
         cardHermesTitle: 'Hermes Agent',
         cardHermesText: 'macOS/Linux 使用官方安装器，并写入 ~/.hermes/config.yaml 和 ~/.hermes/.env，适配自定义 OpenAI 兼容网关。',
         cardDocsTitle: '更多文档',
@@ -501,15 +501,15 @@
         notes: {
           codexBasic: [
             '通过稳定 Codex 入口安装或确认 Codex CLI。',
-            '把 provider 写成 custom，并同步旧 Codex session JSON/JSONL 和 SQLite provider 字段。',
-            '显式设置 CODEX_SECURITY_PROFILE=safe，使用官方安全 approval/sandbox 默认值。',
-            '把 key 存在 ~/.codex/private.env，不写进 config.toml。'
+            '写入前备份整个 ~/.codex 文件夹。',
+            '把 API env 存在 ~/.codex/private.env，不写进 config.toml。',
+            '已有 config.toml 原样保留；没有 config.toml 时让 Codex 使用官方默认。'
           ],
           codexAdvanced: [
             '通过稳定 Codex 入口安装或确认 Codex CLI。',
-            '把 provider 写成 custom，并同步旧 Codex session JSON/JSONL 和 SQLite provider 字段。',
-            '启用 YOLO 自主模式：approval_policy=never 和 sandbox_mode=danger-full-access。',
-            '同时使用稳定易用性默认值：gpt-5.5、高 reasoning、live web search、重试参数和更大的项目文档读取。'
+            '写入前备份整个 ~/.codex 文件夹。',
+            '显式写入旧版 installer 托管的 custom-provider config。',
+            '只在你希望 installer 接管 config.toml 时使用。'
           ],
           claudecode: [
             '安装或确认 Claude Code，并写入 API-token 形态设置。',
@@ -559,11 +559,13 @@
     function modelValue() { return state.model || defaultModel(); }
 
     function codexCommand(isWindows) {
-      const profile = state.codexAdvanced ? 'max' : 'safe';
+      const advancedEnv = state.codexAdvanced
+        ? (isWindows ? `$env:CODEX_WRITE_MANAGED_CONFIG='1'; $env:CODEX_SECURITY_PROFILE='max'; $env:CODEX_MODEL=${ps(modelValue())}; ` : `CODEX_WRITE_MANAGED_CONFIG=1 CODEX_SECURITY_PROFILE=max CODEX_MODEL=${sh(modelValue())} `)
+        : '';
       if (isWindows) {
-        return `$env:CODEX_SECURITY_PROFILE='${profile}'; $env:CODEX_TOKEN=${ps(tokenValue())}; $env:CODEX_API_URL=${ps(baseValue())}; $env:CODEX_MODEL=${ps(modelValue())}; irm ${rawBase}/install-codex.ps1 | iex`;
+        return `${advancedEnv}$env:CODEX_TOKEN=${ps(tokenValue())}; $env:CODEX_API_URL=${ps(baseValue())}; irm ${rawBase}/install-codex.ps1 | iex`;
       }
-      return `CODEX_SECURITY_PROFILE=${profile} CODEX_TOKEN=${sh(tokenValue())} CODEX_API_URL=${sh(baseValue())} CODEX_MODEL=${sh(modelValue())} bash -c "$(curl -fsSL ${rawBase}/install-codex.sh)"`;
+      return `${advancedEnv}CODEX_TOKEN=${sh(tokenValue())} CODEX_API_URL=${sh(baseValue())} bash -c "$(curl -fsSL ${rawBase}/install-codex.sh)"`;
     }
 
     function agentCommand(agent, isWindows) {

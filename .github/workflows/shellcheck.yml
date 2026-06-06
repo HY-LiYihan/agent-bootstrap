@@ -71,26 +71,23 @@ jobs:
           PATH="$tmp/bin:/usr/bin:/bin:/usr/sbin:/sbin" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --no-sync-provider-history --no-install-backup --skip-shell-rc --yes | tee "$tmp/out"
           grep -nE 'Bun failed to install @openai/codex; falling back to npm' "$tmp/out"
           grep -nE 'fake npm install -g @openai/codex' "$tmp/out"
-      - name: Codex stable config generation
+      - name: Codex default preserves official config behavior
         run: |
           tmp="$(mktemp -d)"
-          CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
-          grep -nE 'model_provider = "custom"' "$tmp/codex/config.toml"
-          grep -nE 'web_search = "live"' "$tmp/codex/config.toml"
-          grep -nE 'model_verbosity = "medium"' "$tmp/codex/config.toml"
-          grep -nE 'model_reasoning_summary = "auto"' "$tmp/codex/config.toml"
-          grep -nE 'project_doc_max_bytes = 65536' "$tmp/codex/config.toml"
-          grep -nE 'request_max_retries = 4' "$tmp/codex/config.toml"
-          grep -nE 'stream_max_retries = 5' "$tmp/codex/config.toml"
-          grep -nE 'stream_idle_timeout_ms = 300000' "$tmp/codex/config.toml"
-      - name: Codex provider id is fixed
+          mkdir -p "$tmp/home"
+          CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
+          test ! -f "$tmp/codex/config.toml"
+          grep -nE 'export OPENAI_API_KEY="test-token"' "$tmp/codex/private.env"
+          grep -nE 'export OPENAI_BASE_URL="https://example.test/v1"' "$tmp/codex/private.env"
+          grep -nE 'export CODEX_API_KEY="test-token"' "$tmp/codex/private.env"
+          grep -nE 'export CODEX_API_URL="https://example.test/v1"' "$tmp/codex/private.env"
+      - name: Codex provider id is ignored by default
         run: |
           tmp="$(mktemp -d)"
-          CODEX_PROVIDER_ID=other CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes | tee "$tmp/out"
-          grep -nE 'Ignoring CODEX_PROVIDER_ID' "$tmp/out"
-          grep -nE 'model_provider = "custom"' "$tmp/codex/config.toml"
-          grep -nE '^\[model_providers\."custom"\]' "$tmp/codex/config.toml"
-      - name: Codex config preserves plugin tail
+          CODEX_PROVIDER_ID=other CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes | tee "$tmp/out"
+          test ! -f "$tmp/codex/config.toml"
+          grep -nE 'Existing config|official Codex defaults|Preserve Codex configuration' "$tmp/out"
+      - name: Codex existing config is unchanged
         run: |
           tmp="$(mktemp -d)"
           mkdir -p "$tmp/codex" "$tmp/project"
@@ -104,10 +101,9 @@ jobs:
           [plugins."browser-use@openai-bundled"]
           enabled = true
           TOML
-          CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
-          grep -nE 'model = "gpt-5.5"' "$tmp/codex/config.toml"
-          grep -nE '^\[agents\]' "$tmp/codex/config.toml"
-          grep -nE 'max_threads = 10' "$tmp/codex/config.toml"
+          CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
+          grep -nE 'model = "old"' "$tmp/codex/config.toml"
+          ! grep -nE 'model = "gpt-5.5"' "$tmp/codex/config.toml"
           grep -nE '^\[marketplaces.openai-bundled\]' "$tmp/codex/config.toml"
           grep -nE 'source = "/tmp/bundled-marketplaces/openai-bundled"' "$tmp/codex/config.toml"
           grep -nE '^\[plugins\."browser-use@openai-bundled"\]' "$tmp/codex/config.toml"
@@ -117,13 +113,22 @@ jobs:
           mkdir -p "$tmp/codex" "$tmp/project"
           printf 'model = "before"\n' > "$tmp/codex/config.toml"
           printf 'before agents\n' > "$tmp/project/AGENTS.md"
-          CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
+          CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
           backup_dir="$(cat "$tmp/codex/.last-install-backup")"
-          test -f "$backup_dir/codex/config.toml"
-          grep -nE 'model = "gpt-5.5"' "$tmp/codex/config.toml"
+          test -f "$backup_dir/.codex/config.toml"
+          grep -nE 'model = "before"' "$tmp/codex/config.toml"
+          grep -nE 'before agents' "$tmp/project/AGENTS.md"
+          printf 'model = "after"\n' > "$tmp/codex/config.toml"
           CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" ./agents/codex/install.sh --restore "$backup_dir"
           grep -nE 'model = "before"' "$tmp/codex/config.toml"
           grep -nE 'before agents' "$tmp/project/AGENTS.md"
+      - name: Codex cleanup backups command
+        run: |
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/home/.codex.backup.20260101010101" "$tmp/home/.codex.backup.20260101010102"
+          HOME="$tmp/home" ./agents/codex/install.sh --cleanup-backups
+          test ! -d "$tmp/home/.codex.backup.20260101010101"
+          test ! -d "$tmp/home/.codex.backup.20260101010102"
       - name: Codex dispatcher dry run
         run: AGENT=codex AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 ./install.sh --local . --dry-run --skip-codex-install --skip-shell-rc --yes
       - name: Codex dispatcher no-extra-args dry run

@@ -85,7 +85,7 @@ download_source() {
 main() {
   printf "\n%b+--------------------------------------------------+%b\n" "$CYAN" "$NC"
   printf "%b|%b %bCodex Stable Bootstrap%b                         %b|%b\n" "$CYAN" "$NC" "$BOLD" "$NC" "$CYAN" "$NC"
-  printf "%b|%b minimal custom-provider setup                  %b|%b\n" "$CYAN" "$NC" "$CYAN" "$NC"
+  printf "%b|%b install + backup + API env setup               %b|%b\n" "$CYAN" "$NC" "$CYAN" "$NC"
   printf "%b+--------------------------------------------------+%b\n\n" "$CYAN" "$NC"
 
   local passthrough=()
