@@ -8,6 +8,7 @@ IFS=$'\n\t'
 BOOTSTRAP_REPO="${BOOTSTRAP_REPO:-HY-LiYihan/agent-bootstrap}"
 BOOTSTRAP_REF="${BOOTSTRAP_REF:-stable}"
 BOOTSTRAP_PROFILE="${CODEX_PROFILE:-default}"
+GITHUB_PROXY_PREFIXES="${BOOTSTRAP_GITHUB_PROXY_PREFIXES:-${CODEX_GITHUB_PROXY_PREFIXES:-https://gh-proxy.com/ https://ghproxy.com/}}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 CONFIG_FILE="$CODEX_HOME/config.toml"
 PRIVATE_ENV_FILE="${CODEX_PRIVATE_ENV_FILE:-$CODEX_HOME/private.env}"
@@ -32,6 +33,9 @@ PROJECT_DIR="${CODEX_PROJECT_DIR:-$PWD}"
 NPM_REGISTRY="${CODEX_NPM_REGISTRY:-https://registry.npmmirror.com}"
 INSTALL_NODE="${CODEX_INSTALL_NODE:-1}"
 NODE_VERSION="${CODEX_NODE_VERSION:-24.12.0}"
+BUN_VERSION="${CODEX_BUN_VERSION:-1.2.1}"
+NVM_NODEJS_ORG_MIRROR="${CODEX_NVM_NODEJS_ORG_MIRROR:-https://npmmirror.com/mirrors/node/}"
+NVM_NPM_MIRROR="${CODEX_NVM_NPM_MIRROR:-https://npmmirror.com/mirrors/npm/}"
 LOCAL_SOURCE=""
 DRY_RUN=0
 YES=0
@@ -122,6 +126,10 @@ Environment:
   CODEX_NPM_REGISTRY                  npm fallback registry (default: ${NPM_REGISTRY})
   CODEX_INSTALL_NODE                  1 or 0; install Node.js with NVM if npm is missing (default: ${INSTALL_NODE})
   CODEX_NODE_VERSION                  Node.js version for NVM fallback (default: ${NODE_VERSION})
+  CODEX_BUN_VERSION                   Bun mirror fallback version (default: ${BUN_VERSION})
+  CODEX_NVM_NODEJS_ORG_MIRROR         NVM Node.js mirror (default: ${NVM_NODEJS_ORG_MIRROR})
+  CODEX_NVM_NPM_MIRROR                NVM npm mirror (default: ${NVM_NPM_MIRROR})
+  BOOTSTRAP_GITHUB_PROXY_PREFIXES     Space-separated GitHub proxy prefixes for restricted networks
   CODEX_PROFILE                       Profile name (default: default)
 USAGE
 }
@@ -326,32 +334,67 @@ download_source() {
     return 0
   fi
 
-  local tmp_dir archive url ok
+  local tmp_dir archive source_url url proxy ok
   tmp_dir="$(mktemp -d)"
   archive="$tmp_dir/bootstrap.tar.gz"
   log_info "Downloading bootstrap assets from $BOOTSTRAP_REPO@$BOOTSTRAP_REF" >&2
   ok=0
-  for url in \
+  for source_url in \
     "https://codeload.github.com/${BOOTSTRAP_REPO}/tar.gz/refs/heads/${BOOTSTRAP_REF}" \
     "https://codeload.github.com/${BOOTSTRAP_REPO}/tar.gz/refs/tags/${BOOTSTRAP_REF}" \
     "https://github.com/${BOOTSTRAP_REPO}/archive/${BOOTSTRAP_REF}.tar.gz"; do
-    if command_exists curl; then
-      curl --retry 3 --retry-delay 1 -fsSL "$url" -o "$archive" || continue
-    elif command_exists wget; then
-      wget -qO "$archive" "$url" || continue
-    else
-      fail "curl or wget is required"
-    fi
-    if tar -tzf "$archive" >/dev/null 2>&1; then
-      ok=1
-      break
-    fi
+    for proxy in "" $GITHUB_PROXY_PREFIXES; do
+      url="${proxy}${source_url}"
+      if command_exists curl; then
+        curl --retry 3 --retry-delay 1 -fsSL "$url" -o "$archive" || continue
+      elif command_exists wget; then
+        wget -qO "$archive" "$url" || continue
+      else
+        fail "curl or wget is required"
+      fi
+      if tar -tzf "$archive" >/dev/null 2>&1; then
+        ok=1
+        break 2
+      fi
+    done
   done
   if [[ "$ok" != "1" ]]; then
     fail "Downloaded archive is not a valid gzip tarball from $BOOTSTRAP_REPO@$BOOTSTRAP_REF"
   fi
   tar -xzf "$archive" -C "$tmp_dir" --strip-components=1
   printf "%s" "$tmp_dir"
+}
+
+download_file() {
+  local url="$1"
+  local dest="$2"
+  if command_exists curl; then
+    curl --retry 3 --retry-delay 1 -fsSL --connect-timeout 15 "$url" -o "$dest"
+  elif command_exists wget; then
+    wget -qO "$dest" "$url"
+  else
+    fail "curl or wget is required"
+  fi
+}
+
+download_to_stdout() {
+  local url="$1"
+  if command_exists curl; then
+    curl --retry 3 --retry-delay 1 -fsSL --connect-timeout 15 "$url"
+  elif command_exists wget; then
+    wget -qO- "$url"
+  else
+    fail "curl or wget is required"
+  fi
+}
+
+append_shell_line_once() {
+  local shell_rc="$1"
+  local line="$2"
+  touch "$shell_rc"
+  if ! grep -Fq "$line" "$shell_rc"; then
+    printf "%s\n" "$line" >> "$shell_rc"
+  fi
 }
 
 ensure_bun() {
@@ -364,17 +407,71 @@ ensure_bun() {
   log_info "Bun is missing; installing Bun runtime"
   if [[ "$DRY_RUN" == "1" ]]; then
     run bash -c 'curl -fsSL https://bun.sh/install | bash'
+    log_info "If the official Bun installer is unreachable, mirror fallback uses npmmirror/gh-proxy zip packages"
+    run mkdir -p "$HOME/.bun/bin"
+    return 0
+  fi
+
+  if download_to_stdout https://bun.sh/install | bash; then
+    log_ok "Bun installed with official installer"
   else
-    if curl --retry 3 --retry-delay 1 -fsSL --connect-timeout 15 https://bun.sh/install | bash; then
-      log_ok "Bun installed with official installer"
-    else
-      log_warn "Official Bun installer failed; npm fallback may still work"
-    fi
+    log_warn "Official Bun installer failed; trying mirror zip fallback"
+    install_bun_from_mirror || log_warn "Bun mirror install failed; npm fallback may still work"
   fi
 
   export BUN_INSTALL="$HOME/.bun"
   export PATH="$BUN_INSTALL/bin:$PATH"
   command_exists bun || return 1
+}
+
+install_bun_from_mirror() {
+  command_exists unzip || {
+    log_warn "unzip not found; cannot unpack Bun mirror zip"
+    return 1
+  }
+
+  local arch os_type bun_pkg tmp_dir tmp_zip bun_install_dir mirror_url found_bun
+  arch="$(uname -m 2>/dev/null || printf unknown)"
+  os_type="$(uname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  bun_install_dir="$HOME/.bun"
+  tmp_dir="$(mktemp -d)"
+  tmp_zip="$tmp_dir/bun.zip"
+
+  case "$os_type:$arch" in
+    darwin:arm64) bun_pkg="bun-darwin-aarch64.zip" ;;
+    darwin:x86_64|darwin:amd64) bun_pkg="bun-darwin-x64.zip" ;;
+    linux:aarch64|linux:arm64) bun_pkg="bun-linux-aarch64.zip" ;;
+    linux:x86_64|linux:amd64) bun_pkg="bun-linux-x64.zip" ;;
+    *)
+      rm -rf "$tmp_dir"
+      log_warn "Unsupported Bun mirror package for $os_type/$arch"
+      return 1
+      ;;
+  esac
+
+  local mirrors=(
+    "https://registry.npmmirror.com/-/binary/bun/bun-v${BUN_VERSION}/${bun_pkg}"
+    "https://gh-proxy.com/https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${bun_pkg}"
+    "https://ghproxy.com/https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${bun_pkg}"
+  )
+
+  for mirror_url in "${mirrors[@]}"; do
+    log_info "Trying Bun mirror: $mirror_url"
+    if download_file "$mirror_url" "$tmp_zip" && unzip -o -q "$tmp_zip" -d "$tmp_dir/extract"; then
+      found_bun="$(find "$tmp_dir/extract" -name bun -type f | head -n 1)"
+      if [[ -n "$found_bun" ]]; then
+        mkdir -p "$bun_install_dir/bin"
+        cp "$found_bun" "$bun_install_dir/bin/bun"
+        chmod +x "$bun_install_dir/bin/bun"
+        rm -rf "$tmp_dir"
+        log_ok "Bun installed from mirror"
+        return 0
+      fi
+    fi
+  done
+
+  rm -rf "$tmp_dir"
+  return 1
 }
 
 load_nvm() {
@@ -389,19 +486,30 @@ load_nvm() {
 
 install_nvm() {
   export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
-  local nvm_url="https://github.com/nvm-sh/nvm/archive/v0.40.3.tar.gz"
-  local shell_rc
+  local shell_rc nvm_url installed
   shell_rc="$(detect_shell_rc)"
   log_info "Installing NVM into $NVM_DIR"
 
   if [[ "$DRY_RUN" == "1" ]]; then
     run mkdir -p "$NVM_DIR"
-    run bash -c "curl --retry 3 --retry-delay 1 -fsSL '$nvm_url' | tar -xz -C '$NVM_DIR' --strip-components=1"
+    run bash -c "curl --retry 3 --retry-delay 1 -fsSL 'https://github.com/nvm-sh/nvm/archive/v0.40.3.tar.gz' | tar -xz -C '$NVM_DIR' --strip-components=1"
+    printf "DRY-RUN: configure NVM mirrors: NVM_NODEJS_ORG_MIRROR=%s NVM_NPM_MIRROR=%s\n" "$NVM_NODEJS_ORG_MIRROR" "$NVM_NPM_MIRROR"
     return 0
   fi
 
   mkdir -p "$NVM_DIR"
-  if ! curl --retry 3 --retry-delay 1 -fsSL "$nvm_url" | tar -xz -C "$NVM_DIR" --strip-components=1; then
+  installed=0
+  for nvm_url in \
+    "https://github.com/nvm-sh/nvm/archive/v0.40.3.tar.gz" \
+    "https://gh-proxy.com/https://github.com/nvm-sh/nvm/archive/v0.40.3.tar.gz" \
+    "https://ghproxy.com/https://github.com/nvm-sh/nvm/archive/v0.40.3.tar.gz"; do
+    log_info "Trying NVM source: $nvm_url"
+    if download_to_stdout "$nvm_url" | tar -xz -C "$NVM_DIR" --strip-components=1; then
+      installed=1
+      break
+    fi
+  done
+  if [[ "$installed" != "1" ]]; then
     fail "Failed to install NVM from $nvm_url"
   fi
 
@@ -414,6 +522,10 @@ install_nvm() {
       printf '[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"\n'
     } >> "$shell_rc"
   fi
+  append_shell_line_once "$shell_rc" "export NVM_NODEJS_ORG_MIRROR=$NVM_NODEJS_ORG_MIRROR"
+  append_shell_line_once "$shell_rc" "export NVM_NPM_MIRROR=$NVM_NPM_MIRROR"
+  export NVM_NODEJS_ORG_MIRROR
+  export NVM_NPM_MIRROR
   log_ok "NVM ready: $NVM_DIR"
 }
 
@@ -424,6 +536,8 @@ ensure_npm_available() {
   [[ "$INSTALL_NODE" == "1" ]] || fail "npm is required when Bun is unavailable. Install Node.js or rerun without --no-node."
 
   log_info "npm is missing; preparing Node.js $NODE_VERSION with NVM"
+  export NVM_NODEJS_ORG_MIRROR
+  export NVM_NPM_MIRROR
   if [[ "$DRY_RUN" == "1" ]]; then
     if ! load_nvm; then
       install_nvm
@@ -437,6 +551,8 @@ ensure_npm_available() {
     load_nvm || fail "NVM installed but could not be loaded"
   fi
 
+  export NVM_NODEJS_ORG_MIRROR
+  export NVM_NPM_MIRROR
   nvm install "$NODE_VERSION"
   nvm use "$NODE_VERSION"
   nvm alias default "$NODE_VERSION"
@@ -457,8 +573,10 @@ install_codex() {
 
   log_step "Codex" "Installing @openai/codex"
   if ensure_bun; then
-    run bun install -g @openai/codex
-    return 0
+    if run bun install -g @openai/codex; then
+      return 0
+    fi
+    log_warn "Bun failed to install @openai/codex; falling back to npm"
   fi
 
   ensure_npm_available

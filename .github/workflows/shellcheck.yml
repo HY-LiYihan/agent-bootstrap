@@ -45,6 +45,32 @@ jobs:
           tmp="$(mktemp -d)"
           PATH="/usr/bin:/bin:/usr/sbin:/sbin" NVM_DIR="$tmp/nvm" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --dry-run --no-bun --skip-shell-rc --yes | tee "$tmp/out"
           grep -E 'npm is missing|Installing NVM|nvm/archive|npm install -g @openai/codex' "$tmp/out"
+          grep -E 'NVM_NODEJS_ORG_MIRROR=https://npmmirror.com/mirrors/node/' "$tmp/out"
+      - name: Codex Bun install falls back to npm
+        run: |
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/bin" "$tmp/codex" "$tmp/project"
+          cat > "$tmp/bin/bun" <<'SH'
+          #!/usr/bin/env bash
+          if [[ "$1" == "--version" ]]; then
+            echo "1.2.1"
+            exit 0
+          fi
+          if [[ "$1" == "install" ]]; then
+            echo "fake bun install failed"
+            exit 1
+          fi
+          exit 1
+          SH
+          cat > "$tmp/bin/npm" <<'SH'
+          #!/usr/bin/env bash
+          echo "fake npm $*"
+          exit 0
+          SH
+          chmod +x "$tmp/bin/bun" "$tmp/bin/npm"
+          PATH="$tmp/bin:/usr/bin:/bin:/usr/sbin:/sbin" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --no-sync-provider-history --no-install-backup --skip-shell-rc --yes | tee "$tmp/out"
+          grep -nE 'Bun failed to install @openai/codex; falling back to npm' "$tmp/out"
+          grep -nE 'fake npm install -g @openai/codex' "$tmp/out"
       - name: Codex stable config generation
         run: |
           tmp="$(mktemp -d)"
