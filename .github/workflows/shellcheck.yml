@@ -334,7 +334,7 @@ jobs:
           goto loop
           :done
           if "%OUT%"=="" exit /b 2
-          powershell -NoProfile -Command "Set-Content -Path $env:OUT -Value 'hello from fake codex' -Encoding UTF8"
+          > "%OUT%" echo hello from fake codex
           exit /b 0
           '@
           $env:Path = "$bin;$env:Path"
