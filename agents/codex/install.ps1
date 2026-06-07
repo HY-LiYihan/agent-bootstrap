@@ -492,37 +492,29 @@ function Invoke-CodexSmokeTest {
     $replyFile = Join-Path $tmp "codex-reply.txt"
     $logFile = Join-Path $tmp "codex-exec.log"
     $codexPath = (Get-Command codex).Source
-
-    $process = New-Object System.Diagnostics.Process
     $codexArgs = @("exec", "--skip-git-repo-check", "--ephemeral", "--ignore-rules", "--output-last-message", $replyFile, $SmokeTestPrompt)
-    if ($codexPath -match '\.(cmd|bat)$') {
-        $process.StartInfo.FileName = $env:ComSpec
-        [void]$process.StartInfo.ArgumentList.Add("/c")
-        [void]$process.StartInfo.ArgumentList.Add($codexPath)
-    } else {
-        $process.StartInfo.FileName = $codexPath
-    }
-    foreach ($arg in $codexArgs) {
-        [void]$process.StartInfo.ArgumentList.Add($arg)
-    }
-    $process.StartInfo.RedirectStandardOutput = $true
-    $process.StartInfo.RedirectStandardError = $true
-    $process.StartInfo.UseShellExecute = $false
 
     $start = Get-Date
-    [void]$process.Start()
-    if (-not $process.WaitForExit($SmokeTestTimeoutSeconds * 1000)) {
-        try { $process.Kill($true) } catch {}
+    $job = Start-Job -ScriptBlock {
+        param([string]$CommandPath, [string[]]$Arguments, [string]$LogPath)
+        & $CommandPath @Arguments *>&1 | Tee-Object -FilePath $LogPath
+        if ($null -ne $LASTEXITCODE) { return [int]$LASTEXITCODE }
+        return 0
+    } -ArgumentList $codexPath, $codexArgs, $logFile
+
+    if (-not (Wait-Job $job -Timeout $SmokeTestTimeoutSeconds)) {
+        Stop-Job $job -ErrorAction SilentlyContinue
+        Remove-Job $job -Force -ErrorAction SilentlyContinue
         Write-Warn "Smoke test timed out after ${SmokeTestTimeoutSeconds}s; log: $logFile"
         Fail "Codex did not reply before timeout"
     }
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    [System.IO.File]::WriteAllText($logFile, "STDOUT:`n$stdout`nSTDERR:`n$stderr", [System.Text.UTF8Encoding]::new($false))
+    $jobOutput = Receive-Job $job
+    Remove-Job $job -Force -ErrorAction SilentlyContinue
+    $exitCode = [int]($jobOutput | Select-Object -Last 1)
     $elapsed = [Math]::Max(0, [int]((Get-Date) - $start).TotalSeconds)
 
-    if ($process.ExitCode -ne 0) {
-        Write-Warn "Smoke test failed with exit code $($process.ExitCode); log: $logFile"
+    if ($exitCode -ne 0) {
+        Write-Warn "Smoke test failed with exit code $exitCode; log: $logFile"
         Fail "Codex reply test failed"
     }
     if (-not (Test-Path $replyFile) -or ((Get-Item $replyFile).Length -eq 0)) {
