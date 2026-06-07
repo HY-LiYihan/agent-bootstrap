@@ -313,29 +313,31 @@ jobs:
           $codex = Join-Path $tmp.FullName 'codex'
           $project = Join-Path $tmp.FullName 'project'
           New-Item -ItemType Directory -Path $bin, $codex, $project -Force | Out-Null
-          $fake = Join-Path $bin 'codex.cmd'
-          Set-Content -Path $fake -Value @'
+          $fakeCmd = Join-Path $bin 'codex.cmd'
+          $fakePs1 = Join-Path $bin 'codex.ps1'
+          Set-Content -Path $fakeCmd -Value @'
           @echo off
-          if "%1"=="--version" (
-            echo codex-cli fake
-            exit /b 0
-          )
-          if "%1"=="exec" goto exec
-          exit /b 1
-          :exec
-          set OUT=
-          :loop
-          if "%~1"=="" goto done
-          if "%~1"=="--output-last-message" (
-            shift
-            set "OUT=%~1"
-          )
-          shift
-          goto loop
-          :done
-          if "%OUT%"=="" exit /b 2
-          > "%OUT%" echo hello from fake codex
-          exit /b 0
+          pwsh -NoProfile -File "%~dp0codex.ps1" %*
+          exit /b %ERRORLEVEL%
+          '@
+          Set-Content -Path $fakePs1 -Value @'
+          param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest)
+          if ($Rest.Count -gt 0 -and $Rest[0] -eq '--version') {
+            Write-Output 'codex-cli fake'
+            exit 0
+          }
+          if ($Rest.Count -gt 0 -and $Rest[0] -eq 'exec') {
+            $out = ''
+            for ($i = 0; $i -lt $Rest.Count; $i++) {
+              if ($Rest[$i] -eq '--output-last-message' -and ($i + 1) -lt $Rest.Count) {
+                $out = $Rest[$i + 1]
+              }
+            }
+            if (-not $out) { exit 2 }
+            Set-Content -Path $out -Value 'hello from fake codex' -Encoding UTF8
+            exit 0
+          }
+          exit 1
           '@
           $env:Path = "$bin;$env:Path"
           $env:CODEX_TOKEN = 'test-token'
