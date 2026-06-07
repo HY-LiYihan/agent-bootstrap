@@ -32,7 +32,7 @@ Windows PowerShell:
 $env:CODEX_TOKEN='YOUR_TOKEN'; $env:CODEX_API_URL='YOUR_BASE_URL'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.ps1 | iex
 ```
 
-The stable command has no bundled token and no bundled private base URL. Both values must be provided explicitly.
+The stable command has no bundled token and no bundled private base URL. Both values must be provided explicitly. On macOS/Linux, the installer writes those values to `~/.codex/private.env`, sources that file for the final verification step, and adds a shell startup line so future shells load it automatically. Codex does not automatically source this installer-managed `private.env` file by itself.
 
 ## Safety And Restore
 
@@ -76,9 +76,25 @@ After confirming Codex works, delete macOS/Linux Codex install backups with:
 find "$HOME" -maxdepth 1 -type d -name '.codex.backup.*' -prune -exec rm -rf {} +
 ```
 
+Or run the installer cleanup path directly:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.sh)" -- --cleanup-backups
+```
+
 ## Download Reliability
 
 The public entrypoints download this repository through GitHub codeload branch archives, then validate the archive before extraction. `stable` and `latest` are maintained as branches, not moving tags, to avoid raw GitHub tag-cache ambiguity.
+
+## CI-Tested Platforms
+
+The GitHub Actions workflow covers the stable install paths across all supported systems:
+
+- Ubuntu/Linux: Bash syntax, stable entrypoint dry-run, Bun/npm/Node fallback, backup/restore, cleanup, provider-history sync, and fake Codex reply smoke test.
+- macOS: stable entrypoint dry-run plus fake Codex reply smoke test through the Bash installer.
+- Windows: PowerShell syntax, stable entrypoint dry-run, backup/restore, provider config checks, and fake Codex reply smoke test through the PowerShell installer.
+
+The fake reply tests do not use real API keys. They replace `codex` with a temporary fake CLI so CI can prove that the installer reaches the final `codex exec` verification path, writes/loads private env, captures the final response, and reports elapsed seconds.
 
 ## Supported Agents
 
@@ -107,7 +123,13 @@ Recommended stable Codex-only install:
 CODEX_TOKEN="YOUR_TOKEN" CODEX_API_URL="YOUR_BASE_URL" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.sh)"
 ```
 
-This path intentionally does the stable minimum: detect the environment, back up the whole `~/.codex` folder, install or verify Codex CLI, store API environment variables in `~/.codex/private.env`, and add a shell startup source line. If `~/.codex/config.toml` already exists, it is left unchanged. If it does not exist, the installer leaves it absent so Codex uses official defaults. On a fresh machine, the installer first tries Bun, falls back to npm, and can install Node.js through NVM when npm is missing.
+This path intentionally does the stable minimum: detect the environment, back up the whole `~/.codex` folder, install or verify Codex CLI, store API environment variables in `~/.codex/private.env`, preserve Codex config, and run a final `codex exec "你好"` smoke test that reports elapsed seconds. If `~/.codex/config.toml` already exists, it is left unchanged. If it does not exist, the installer leaves it absent so Codex uses official defaults. On a fresh machine, the installer first tries Bun, falls back to npm, and can install Node.js through NVM when npm is missing.
+
+Skip the final reply test when you are running CI, using placeholder credentials, or only preparing files:
+
+```bash
+CODEX_TOKEN="YOUR_TOKEN" CODEX_API_URL="YOUR_BASE_URL" bash -c "$(curl -fsSL https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.sh)" -- --skip-smoke-test
+```
 
 There are also three broader entry styles:
 
@@ -353,7 +375,7 @@ Codex++:
 macOS/Linux:
 
 ```bash
-AGENT=codex AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-codex-install --skip-shell-rc --yes
+AGENT=codex AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-codex-install --skip-shell-rc --skip-smoke-test --yes
 AGENT=claudecode AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/api AGENT_MODEL=claude-sonnet-4-5 AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-claude-install
 AGENT=openclaw AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/api AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run
 AGENT=hermes AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_MODEL=gpt-5.5 AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip-install
@@ -363,7 +385,7 @@ AGENT=codexplusplus AGENT_BOOTSTRAP_LOCAL_SOURCE=. ./install.sh --dry-run --skip
 Windows PowerShell:
 
 ```powershell
-$env:CODEX_TOKEN='test-token'; .\agents\codex\install.ps1 -LocalSource . -DryRun -SkipCodexInstall -SkipProfileUpdate
+$env:CODEX_TOKEN='test-token'; .\agents\codex\install.ps1 -LocalSource . -DryRun -SkipCodexInstall -SkipProfileUpdate -SkipSmokeTest
 $env:CLAUDE_CLIENT_TOKEN='test-token'; .\agents\claudecode\install.ps1 -DryRun -SkipInstall
 $env:OPENCLAW_TOKEN='test-token'; .\agents\openclaw\install.ps1 -DryRun
 $env:HERMES_API_KEY='test-token'; .\agents\hermes\install.ps1 -DryRun -SkipInstall

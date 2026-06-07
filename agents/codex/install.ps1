@@ -33,6 +33,10 @@ param(
     [switch]$Force,
     [switch]$SkipCodexInstall,
     [switch]$SkipProfileUpdate,
+    [switch]$SkipSmokeTest,
+    [switch]$SmokeTest,
+    [string]$SmokeTestPrompt = $(if ($env:CODEX_SMOKE_TEST_PROMPT) { $env:CODEX_SMOKE_TEST_PROMPT } else { "你好" }),
+    [int]$SmokeTestTimeoutSeconds = $(if ($env:CODEX_SMOKE_TEST_TIMEOUT_SECONDS) { [int]$env:CODEX_SMOKE_TEST_TIMEOUT_SECONDS } else { 120 }),
     [switch]$NoBun,
     [switch]$NoInstallBackup,
     [switch]$Help
@@ -41,6 +45,11 @@ param(
 $ErrorActionPreference = "Stop"
 $ConfigFile = Join-Path $CodexHome "config.toml"
 $PrivateEnvFile = $(if ($env:CODEX_PRIVATE_ENV_FILE) { $env:CODEX_PRIVATE_ENV_FILE } else { Join-Path $CodexHome "private.env" })
+$RunSmokeTest = $true
+if ($env:CODEX_SMOKE_TEST -and $env:CODEX_SMOKE_TEST.ToLowerInvariant() -in @("0", "false", "no", "off")) { $RunSmokeTest = $false }
+if ($env:CODEX_SMOKE_TEST -and $env:CODEX_SMOKE_TEST.ToLowerInvariant() -in @("1", "true", "yes", "on")) { $RunSmokeTest = $true }
+if ($SkipSmokeTest) { $RunSmokeTest = $false }
+if ($SmokeTest) { $RunSmokeTest = $true }
 
 function Write-Banner {
     Write-Host ""
@@ -77,6 +86,9 @@ Environment:
   CODEX_WEB_SEARCH                    Web search mode (default: live)
   CODEX_SECURITY_PROFILE              max or safe (default: max)
   CODEX_INSTALL_BACKUP_DIR            Optional explicit restore snapshot directory
+  CODEX_SMOKE_TEST                    1 or 0; run codex exec reply test after install (default: 1)
+  CODEX_SMOKE_TEST_PROMPT             Prompt for final reply test (default: 你好)
+  CODEX_SMOKE_TEST_TIMEOUT_SECONDS    Timeout for final reply test (default: 120)
   CODEX_NPM_REGISTRY                  npm fallback registry (default: https://registry.npmmirror.com)
   BOOTSTRAP_REF                       Git branch/tag for templates (default: stable)
 "@
@@ -117,6 +129,7 @@ function Assert-EnvKey {
 function Assert-RequiredInputs {
     if (-not $Token) { Fail "Missing CODEX_TOKEN or OPENAI_API_KEY" }
     if (-not $BaseUrl) { Fail "Missing CODEX_API_URL or OPENAI_BASE_URL" }
+    if ($SmokeTestTimeoutSeconds -le 0) { Fail "CODEX_SMOKE_TEST_TIMEOUT_SECONDS must be greater than 0" }
     switch ($SecurityProfile.ToLowerInvariant()) {
         { $_ -in @("max", "full", "full-auto", "danger") } { $script:SecurityProfile = "max"; break }
         { $_ -in @("safe", "official", "default") } { $script:SecurityProfile = "safe"; break }
@@ -453,6 +466,76 @@ function Update-PowerShellProfile {
     Write-Ok "PowerShell profile configured: $PROFILE"
 }
 
+function Invoke-CodexSmokeTest {
+    if (-not $RunSmokeTest) {
+        Write-Info "Skipping Codex reply smoke test"
+        return
+    }
+
+    Write-Step "8/8" "Verify Codex can reply"
+    if ($DryRun) {
+        Write-Host "DRY-RUN: source $PrivateEnvFile and run codex exec --ephemeral --ignore-rules $SmokeTestPrompt"
+        return
+    }
+    if (-not (Test-CommandExists "codex")) {
+        Fail "Codex CLI not found; cannot run smoke test"
+    }
+    if (-not (Test-Path $PrivateEnvFile)) {
+        Fail "Private env file not found; cannot run smoke test: $PrivateEnvFile"
+    }
+
+    # private.env is an installer-managed PowerShell env file. Codex does not auto-source it.
+    . "$PrivateEnvFile"
+
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-smoke-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+    $replyFile = Join-Path $tmp "codex-reply.txt"
+    $logFile = Join-Path $tmp "codex-exec.log"
+    $codexPath = (Get-Command codex).Source
+
+    $process = New-Object System.Diagnostics.Process
+    $codexArgs = @("exec", "--skip-git-repo-check", "--ephemeral", "--ignore-rules", "--output-last-message", $replyFile, $SmokeTestPrompt)
+    if ($codexPath -match '\.(cmd|bat)$') {
+        $process.StartInfo.FileName = $env:ComSpec
+        [void]$process.StartInfo.ArgumentList.Add("/c")
+        [void]$process.StartInfo.ArgumentList.Add($codexPath)
+    } else {
+        $process.StartInfo.FileName = $codexPath
+    }
+    foreach ($arg in $codexArgs) {
+        [void]$process.StartInfo.ArgumentList.Add($arg)
+    }
+    $process.StartInfo.RedirectStandardOutput = $true
+    $process.StartInfo.RedirectStandardError = $true
+    $process.StartInfo.UseShellExecute = $false
+
+    $start = Get-Date
+    [void]$process.Start()
+    if (-not $process.WaitForExit($SmokeTestTimeoutSeconds * 1000)) {
+        try { $process.Kill($true) } catch {}
+        Write-Warn "Smoke test timed out after ${SmokeTestTimeoutSeconds}s; log: $logFile"
+        Fail "Codex did not reply before timeout"
+    }
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $stderr = $process.StandardError.ReadToEnd()
+    [System.IO.File]::WriteAllText($logFile, "STDOUT:`n$stdout`nSTDERR:`n$stderr", [System.Text.UTF8Encoding]::new($false))
+    $elapsed = [Math]::Max(0, [int]((Get-Date) - $start).TotalSeconds)
+
+    if ($process.ExitCode -ne 0) {
+        Write-Warn "Smoke test failed with exit code $($process.ExitCode); log: $logFile"
+        Fail "Codex reply test failed"
+    }
+    if (-not (Test-Path $replyFile) -or ((Get-Item $replyFile).Length -eq 0)) {
+        Write-Warn "Smoke test produced no final reply; log: $logFile"
+        Fail "Codex reply test returned an empty response"
+    }
+
+    $preview = ((Get-Content $replyFile -Raw) -replace '\s+', ' ').Trim()
+    if ($preview.Length -gt 160) { $preview = $preview.Substring(0, 160) }
+    Write-Ok "Codex replied in ${elapsed}s"
+    Write-Info "Reply preview: $preview"
+}
+
 function Main {
     if ($Help) { Show-Help; return }
     Write-Banner
@@ -463,7 +546,7 @@ function Main {
     Assert-EnvKey
     Assert-RequiredInputs
 
-    Write-Step "1/7" "Inspect system and bootstrap settings"
+    Write-Step "1/8" "Inspect system and bootstrap settings"
     Write-Info "PowerShell: $($PSVersionTable.PSVersion)"
     Write-Info "Provider: $ProviderId"
     if ($env:CODEX_PROVIDER_ID -and $env:CODEX_PROVIDER_ID -ne $ProviderId) {
@@ -478,29 +561,31 @@ function Main {
     Write-Info "Subagents: max_threads=$AgentsMaxThreads max_depth=$AgentsMaxDepth job_timeout_s=$AgentsJobMaxRuntimeSeconds"
     Write-Info "Security profile: $SecurityProfile"
     Write-Info "Install backup: $(-not $NoInstallBackup)"
+    Write-Info "Smoke test: $RunSmokeTest"
     Write-Info "npm fallback registry: $NpmRegistry"
     Write-Info "Base URL: $BaseUrl"
     if ($Token) { Write-Info "API key: $(Mask-Secret $Token)" }
 
-    Write-Step "2/7" "Load profile and template assets"
+    Write-Step "2/8" "Load profile and template assets"
     $sourceDir = Get-SourceDir
     Load-Profile $sourceDir
     New-InstallBackup
 
-    Write-Step "3/7" "Install or verify Codex CLI"
+    Write-Step "3/8" "Install or verify Codex CLI"
     Install-Codex
 
-    Write-Step "4/7" "Write private API key"
+    Write-Step "4/8" "Write private API key"
     Write-PrivateEnv
 
-    Write-Step "5/7" "Write Codex custom provider config"
+    Write-Step "5/8" "Write Codex custom provider config"
     Write-CodexConfig
 
-    Write-Step "6/7" "Install rules and project instructions"
+    Write-Step "6/8" "Install rules and project instructions"
     Install-RulesAndAgents $sourceDir
 
-    Write-Step "7/7" "Ensure PowerShell loads private env"
+    Write-Step "7/8" "Ensure PowerShell loads private env"
     Update-PowerShellProfile
+    Invoke-CodexSmokeTest
 
     Write-Ok "Codex bootstrap completed"
     Write-Info "Restart PowerShell or run: . `"$PrivateEnvFile`""

@@ -40,7 +40,7 @@ Environment:
   BOOTSTRAP_GITHUB_PROXY_PREFIXES  Space-separated GitHub proxy prefixes for restricted networks
 
 All other options pass through to agents/codex/install.sh, for example:
-  --dry-run --skip-codex-install --skip-shell-rc --no-sync-provider-history
+  --dry-run --skip-codex-install --skip-shell-rc --skip-smoke-test --no-sync-provider-history
 USAGE
 }
 

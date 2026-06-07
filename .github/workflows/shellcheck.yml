@@ -35,15 +35,16 @@ jobs:
           node --check /tmp/agent-bootstrap-docs-page.js
           grep -n 'install-codex.sh' docs/index.html
           grep -n 'install-codex.ps1' docs/index.html
+          grep -n 'CI-tested install paths' docs/index.html
           grep -n 'claudecode' docs/index.html
           grep -n 'openclaw' docs/index.html
           grep -n 'hermes' docs/index.html
       - name: Codex stable entrypoint dry run
-        run: CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --dry-run --skip-codex-install --skip-shell-rc --yes
+        run: CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --dry-run --skip-codex-install --skip-shell-rc --skip-smoke-test --yes
       - name: Codex Node fallback dry run
         run: |
           tmp="$(mktemp -d)"
-          PATH="/usr/bin:/bin:/usr/sbin:/sbin" NVM_DIR="$tmp/nvm" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --dry-run --no-bun --skip-shell-rc --yes | tee "$tmp/out"
+          PATH="/usr/bin:/bin:/usr/sbin:/sbin" NVM_DIR="$tmp/nvm" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --dry-run --no-bun --skip-shell-rc --skip-smoke-test --yes | tee "$tmp/out"
           grep -E 'npm is missing|Installing NVM|nvm/archive|npm install -g @openai/codex' "$tmp/out"
           grep -E 'NVM_NODEJS_ORG_MIRROR=https://npmmirror.com/mirrors/node/' "$tmp/out"
       - name: Codex Bun install falls back to npm
@@ -68,14 +69,36 @@ jobs:
           exit 0
           SH
           chmod +x "$tmp/bin/bun" "$tmp/bin/npm"
-          PATH="$tmp/bin:/usr/bin:/bin:/usr/sbin:/sbin" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --no-sync-provider-history --no-install-backup --skip-shell-rc --yes | tee "$tmp/out"
+          PATH="$tmp/bin:/usr/bin:/bin:/usr/sbin:/sbin" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --no-sync-provider-history --no-install-backup --skip-shell-rc --skip-smoke-test --yes | tee "$tmp/out"
           grep -nE 'Bun failed to install @openai/codex; falling back to npm' "$tmp/out"
           grep -nE 'fake npm install -g @openai/codex' "$tmp/out"
+      - name: Codex reply smoke test with fake CLI on Ubuntu
+        run: |
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/bin" "$tmp/codex" "$tmp/project"
+          cat > "$tmp/bin/codex" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "${1:-}" == "--version" ]]; then echo "codex-cli fake"; exit 0; fi
+          if [[ "${1:-}" == "exec" ]]; then
+            out=""
+            while [[ $# -gt 0 ]]; do
+              case "$1" in --output-last-message) out="$2"; shift 2 ;; *) shift ;; esac
+            done
+            printf 'hello from fake codex\n' > "$out"
+            exit 0
+          fi
+          exit 1
+          SH
+          chmod +x "$tmp/bin/codex"
+          PATH="$tmp/bin:/usr/bin:/bin:/usr/sbin:/sbin" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --no-install-backup --yes | tee "$tmp/out"
+          grep -n 'Codex replied in' "$tmp/out"
+          grep -n 'Reply preview: hello from fake codex' "$tmp/out"
       - name: Codex default preserves official config behavior
         run: |
           tmp="$(mktemp -d)"
           mkdir -p "$tmp/home"
-          CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
+          CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --skip-smoke-test --yes
           test ! -f "$tmp/codex/config.toml"
           grep -nE 'export OPENAI_API_KEY="test-token"' "$tmp/codex/private.env"
           grep -nE 'export OPENAI_BASE_URL="https://example.test/v1"' "$tmp/codex/private.env"
@@ -84,7 +107,7 @@ jobs:
       - name: Codex provider id is ignored by default
         run: |
           tmp="$(mktemp -d)"
-          CODEX_PROVIDER_ID=other CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes | tee "$tmp/out"
+          CODEX_PROVIDER_ID=other CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --skip-smoke-test --yes | tee "$tmp/out"
           test ! -f "$tmp/codex/config.toml"
           grep -nE 'Existing config|official Codex defaults|Preserve Codex configuration' "$tmp/out"
       - name: Codex existing config is unchanged
@@ -101,7 +124,7 @@ jobs:
           [plugins."browser-use@openai-bundled"]
           enabled = true
           TOML
-          CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
+          CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --skip-smoke-test --yes
           grep -nE 'model = "old"' "$tmp/codex/config.toml"
           ! grep -nE 'model = "gpt-5.5"' "$tmp/codex/config.toml"
           grep -nE '^\[marketplaces.openai-bundled\]' "$tmp/codex/config.toml"
@@ -113,7 +136,7 @@ jobs:
           mkdir -p "$tmp/codex" "$tmp/project"
           printf 'model = "before"\n' > "$tmp/codex/config.toml"
           printf 'before agents\n' > "$tmp/project/AGENTS.md"
-          CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --yes
+          CODEX_INSTALL_BACKUP_DIR="$tmp/backup" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --skip-smoke-test --yes
           backup_dir="$(cat "$tmp/codex/.last-install-backup")"
           test -f "$backup_dir/.codex/config.toml"
           grep -nE 'model = "before"' "$tmp/codex/config.toml"
@@ -130,7 +153,7 @@ jobs:
           test ! -d "$tmp/home/.codex.backup.20260101010101"
           test ! -d "$tmp/home/.codex.backup.20260101010102"
       - name: Codex dispatcher dry run
-        run: AGENT=codex AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 ./install.sh --local . --dry-run --skip-codex-install --skip-shell-rc --yes
+        run: AGENT=codex AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 ./install.sh --local . --dry-run --skip-codex-install --skip-shell-rc --skip-smoke-test --yes
       - name: Codex dispatcher no-extra-args dry run
         run: |
           tmp="$(mktemp -d)"
@@ -139,9 +162,9 @@ jobs:
           chmod +x "$tmp/agents/codex/install.sh"
           AGENT=codex AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 ./install.sh --local "$tmp"
       - name: Codex safe profile dry run
-        run: CODEX_SECURITY_PROFILE=safe AGENT=codex AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 ./install.sh --local . --dry-run --skip-codex-install --skip-shell-rc --yes
+        run: CODEX_SECURITY_PROFILE=safe AGENT=codex AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 ./install.sh --local . --dry-run --skip-codex-install --skip-shell-rc --skip-smoke-test --yes
       - name: Default agent entrypoint dry run
-        run: AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_BOOTSTRAP_LOCAL_SOURCE=. AGENT_BOOTSTRAP_INSTALL_ARGS='--dry-run --skip-codex-install --skip-shell-rc --yes' bash -c '. ./agent'
+        run: AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/v1 AGENT_BOOTSTRAP_LOCAL_SOURCE=. AGENT_BOOTSTRAP_INSTALL_ARGS='--dry-run --skip-codex-install --skip-shell-rc --skip-smoke-test --yes' bash -c '. ./agent'
       - name: Claude Code dispatcher dry run
         run: |
           AGENT=claudecode AGENT_TOKEN=test-token AGENT_BASE_URL=https://example.test/anthropic AGENT_MODEL=claude-sonnet-4-5 ./install.sh --local . --dry-run --skip-claude-install | grep -n 'Would set Claude default model: claude-sonnet-4-5'
@@ -219,7 +242,29 @@ jobs:
       - name: Codex stable entrypoint dry run on macOS
         run: |
           tmp="$(mktemp -d)"
-          CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --dry-run --skip-codex-install --skip-shell-rc --yes
+          CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --dry-run --skip-codex-install --skip-shell-rc --skip-smoke-test --yes
+      - name: Codex reply smoke test with fake CLI on macOS
+        run: |
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/bin" "$tmp/codex" "$tmp/project"
+          cat > "$tmp/bin/codex" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "${1:-}" == "--version" ]]; then echo "codex-cli fake"; exit 0; fi
+          if [[ "${1:-}" == "exec" ]]; then
+            out=""
+            while [[ $# -gt 0 ]]; do
+              case "$1" in --output-last-message) out="$2"; shift 2 ;; *) shift ;; esac
+            done
+            printf 'hello from fake codex\n' > "$out"
+            exit 0
+          fi
+          exit 1
+          SH
+          chmod +x "$tmp/bin/codex"
+          PATH="$tmp/bin:/usr/bin:/bin:/usr/sbin:/sbin" CODEX_HOME="$tmp/codex" CODEX_PROJECT_DIR="$tmp/project" CODEX_TOKEN=test-token CODEX_API_URL=https://example.test/v1 ./install-codex.sh --local . --skip-codex-install --skip-shell-rc --no-install-backup --yes | tee "$tmp/out"
+          grep -n 'Codex replied in' "$tmp/out"
+          grep -n 'Reply preview: hello from fake codex' "$tmp/out"
 
   windows-powershell:
     runs-on: windows-latest
@@ -248,7 +293,7 @@ jobs:
           $env:CODEX_HOME = Join-Path $env:RUNNER_TEMP 'codex-entry'
           $env:CODEX_PROJECT_DIR = Join-Path $env:RUNNER_TEMP 'project-entry'
           $env:AGENT_BOOTSTRAP_LOCAL_SOURCE = (Get-Location).Path
-          .\install-codex.ps1 -DryRun -SkipCodexInstall -SkipProfileUpdate
+          .\install-codex.ps1 -DryRun -SkipCodexInstall -SkipProfileUpdate -SkipSmokeTest
       - name: Interactive entrypoint smoke check
         shell: pwsh
         run: |
@@ -259,7 +304,45 @@ jobs:
           $env:CODEX_TOKEN = 'test-token'
           $env:CODEX_API_URL = 'https://example.test/v1'
           $env:CODEX_SECURITY_PROFILE = 'safe'
-          .\agents\codex\install.ps1 -LocalSource . -DryRun -SkipCodexInstall -SkipProfileUpdate
+          .\agents\codex\install.ps1 -LocalSource . -DryRun -SkipCodexInstall -SkipProfileUpdate -SkipSmokeTest
+      - name: Codex PowerShell reply smoke test with fake CLI
+        shell: pwsh
+        run: |
+          $tmp = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP ([Guid]::NewGuid().ToString('N')))
+          $bin = Join-Path $tmp.FullName 'bin'
+          $codex = Join-Path $tmp.FullName 'codex'
+          $project = Join-Path $tmp.FullName 'project'
+          New-Item -ItemType Directory -Path $bin, $codex, $project -Force | Out-Null
+          $fake = Join-Path $bin 'codex.cmd'
+          Set-Content -Path $fake -Value @'
+          @echo off
+          if "%1"=="--version" (
+            echo codex-cli fake
+            exit /b 0
+          )
+          if "%1"=="exec" goto exec
+          exit /b 1
+          :exec
+          set OUT=
+          :loop
+          if "%~1"=="" goto done
+          if "%~1"=="--output-last-message" (
+            shift
+            set "OUT=%~1"
+          )
+          shift
+          goto loop
+          :done
+          if "%OUT%"=="" exit /b 2
+          powershell -NoProfile -Command "Set-Content -Path $env:OUT -Value 'hello from fake codex' -Encoding UTF8"
+          exit /b 0
+          '@
+          $env:Path = "$bin;$env:Path"
+          $env:CODEX_TOKEN = 'test-token'
+          $env:CODEX_API_URL = 'https://example.test/v1'
+          .\agents\codex\install.ps1 -LocalSource . -CodexHome $codex -ProjectDir $project -SkipCodexInstall -SkipProfileUpdate -NoInstallBackup -Yes *>&1 | Tee-Object -FilePath (Join-Path $tmp.FullName 'out.txt')
+          Select-String -Path (Join-Path $tmp.FullName 'out.txt') -Pattern 'Codex replied in'
+          Select-String -Path (Join-Path $tmp.FullName 'out.txt') -Pattern 'Reply preview: hello from fake codex'
       - name: Codex PowerShell provider id is fixed
         shell: pwsh
         run: |
@@ -269,7 +352,7 @@ jobs:
           $env:CODEX_TOKEN = 'test-token'
           $env:CODEX_API_URL = 'https://example.test/v1'
           $env:CODEX_PROVIDER_ID = 'other'
-          .\agents\codex\install.ps1 -LocalSource . -CodexHome $codex -ProjectDir $project -SkipCodexInstall -SkipProfileUpdate -Yes *>&1 | Tee-Object -FilePath (Join-Path $tmp.FullName 'out.txt')
+          .\agents\codex\install.ps1 -LocalSource . -CodexHome $codex -ProjectDir $project -SkipCodexInstall -SkipProfileUpdate -SkipSmokeTest -Yes *>&1 | Tee-Object -FilePath (Join-Path $tmp.FullName 'out.txt')
           Select-String -Path (Join-Path $tmp.FullName 'out.txt') -Pattern 'Ignoring CODEX_PROVIDER_ID'
           Select-String -Path (Join-Path $codex 'config.toml') -Pattern 'model_provider = "custom"'
           Select-String -Path (Join-Path $codex 'config.toml') -Pattern '\[model_providers\."custom"\]'
@@ -285,7 +368,7 @@ jobs:
           Set-Content -Path (Join-Path $project 'AGENTS.md') -Value 'before agents'
           $env:CODEX_TOKEN = 'test-token'
           $env:CODEX_API_URL = 'https://example.test/v1'
-          .\agents\codex\install.ps1 -LocalSource . -CodexHome $codex -ProjectDir $project -SkipCodexInstall -SkipProfileUpdate -Yes
+          .\agents\codex\install.ps1 -LocalSource . -CodexHome $codex -ProjectDir $project -SkipCodexInstall -SkipProfileUpdate -SkipSmokeTest -Yes
           $backup = (Get-Content (Join-Path $codex '.last-install-backup') -Raw).Trim()
           if (-not (Test-Path (Join-Path $backup 'codex\config.toml'))) { throw 'missing backup config' }
           Select-String -Path (Join-Path $codex 'config.toml') -Pattern 'model = "gpt-5.5"'

@@ -43,6 +43,9 @@ FORCE=0
 SKIP_CODEX_INSTALL=0
 SKIP_SHELL_RC=0
 INSTALL_BUN=1
+RUN_SMOKE_TEST="${CODEX_SMOKE_TEST:-1}"
+SMOKE_TEST_PROMPT="${CODEX_SMOKE_TEST_PROMPT:-你好}"
+SMOKE_TEST_TIMEOUT_SECONDS="${CODEX_SMOKE_TEST_TIMEOUT_SECONDS:-120}"
 SYNC_PROVIDER_HISTORY="${CODEX_SYNC_PROVIDER_HISTORY:-0}"
 INSTALL_BACKUP="${CODEX_INSTALL_BACKUP:-1}"
 INSTALL_BACKUP_DIR="${CODEX_INSTALL_BACKUP_DIR:-}"
@@ -98,6 +101,8 @@ Options:
   --force              Allow reinstalling Codex and overwriting managed files
   --skip-codex-install Do not install or update @openai/codex
   --skip-shell-rc      Do not add source line to shell startup file
+  --skip-smoke-test    Do not run a final codex exec reply test
+  --smoke-test         Force the final codex exec reply test
   --no-install-backup  Do not create a pre-install restore snapshot
   --backup-dir DIR     Write the pre-install restore snapshot to DIR
   --restore DIR        Restore files from a previous install backup and exit
@@ -130,6 +135,9 @@ Environment:
   CODEX_SYNC_PROVIDER_HISTORY         1 or 0 (default: ${SYNC_PROVIDER_HISTORY})
   CODEX_INSTALL_BACKUP                1 or 0; backup the whole ~/.codex folder (default: ${INSTALL_BACKUP})
   CODEX_INSTALL_BACKUP_DIR            Optional explicit backup directory
+  CODEX_SMOKE_TEST                    1 or 0; run codex exec reply test after install (default: ${RUN_SMOKE_TEST})
+  CODEX_SMOKE_TEST_PROMPT             Prompt for final reply test (default: ${SMOKE_TEST_PROMPT})
+  CODEX_SMOKE_TEST_TIMEOUT_SECONDS    Timeout for final reply test (default: ${SMOKE_TEST_TIMEOUT_SECONDS})
   CODEX_WRITE_MANAGED_CONFIG          1 or 0; write legacy managed config (default: ${WRITE_MANAGED_CONFIG})
   CODEX_INSTALL_TEMPLATES             1 or 0; install rules/AGENTS templates (default: ${INSTALL_TEMPLATES})
   CODEX_NPM_REGISTRY                  npm fallback registry (default: ${NPM_REGISTRY})
@@ -155,6 +163,8 @@ while [[ $# -gt 0 ]]; do
     --force) FORCE=1; shift ;;
     --skip-codex-install) SKIP_CODEX_INSTALL=1; shift ;;
     --skip-shell-rc) SKIP_SHELL_RC=1; shift ;;
+    --skip-smoke-test) RUN_SMOKE_TEST=0; shift ;;
+    --smoke-test) RUN_SMOKE_TEST=1; shift ;;
     --no-install-backup) INSTALL_BACKUP=0; shift ;;
     --backup-dir) INSTALL_BACKUP_DIR="${2:?missing backup dir}"; shift 2 ;;
     --restore) RESTORE_FROM="${2:?missing backup dir}"; shift 2 ;;
@@ -217,6 +227,13 @@ validate_required_inputs() {
     0|false|no|off) INSTALL_BACKUP=0 ;;
     *) fail "Invalid CODEX_INSTALL_BACKUP: $INSTALL_BACKUP. Use 1 or 0." ;;
   esac
+  case "$RUN_SMOKE_TEST" in
+    1|true|yes|on) RUN_SMOKE_TEST=1 ;;
+    0|false|no|off) RUN_SMOKE_TEST=0 ;;
+    *) fail "Invalid CODEX_SMOKE_TEST: $RUN_SMOKE_TEST. Use 1 or 0." ;;
+  esac
+  [[ "$SMOKE_TEST_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || fail "Invalid CODEX_SMOKE_TEST_TIMEOUT_SECONDS: $SMOKE_TEST_TIMEOUT_SECONDS"
+  [[ "$SMOKE_TEST_TIMEOUT_SECONDS" -gt 0 ]] || fail "CODEX_SMOKE_TEST_TIMEOUT_SECONDS must be greater than 0"
   case "$WRITE_MANAGED_CONFIG" in
     1|true|yes|on) WRITE_MANAGED_CONFIG=1 ;;
     0|false|no|off) WRITE_MANAGED_CONFIG=0 ;;
@@ -639,7 +656,7 @@ copy_dir_contents() {
 
 create_install_backup() {
   [[ "$INSTALL_BACKUP" == "1" ]] || return 0
-  log_step "1/4" "Backup existing Codex home"
+  log_step "1/5" "Backup existing Codex home"
   if [[ "$DRY_RUN" == "1" ]]; then
     if [[ -d "$CODEX_HOME" ]]; then
       printf "DRY-RUN: copy %s to %s\n" "$CODEX_HOME" "${INSTALL_BACKUP_DIR:-$HOME/.codex.backup.$(date +%Y%m%d%H%M%S)}"
@@ -737,7 +754,7 @@ preserve_config_tail() {
 
 write_private_env() {
   [[ -n "$API_KEY" ]] || fail "Missing CODEX_TOKEN or OPENAI_API_KEY"
-  log_step "3/4" "Configure API environment"
+  log_step "3/5" "Configure API environment"
   log_info "Secret file: $PRIVATE_ENV_FILE"
   log_info "Exports: OPENAI_API_KEY, OPENAI_BASE_URL, CODEX_API_KEY, CODEX_API_URL"
   run mkdir -p "$(dirname "$PRIVATE_ENV_FILE")"
@@ -761,7 +778,7 @@ ENVEOF
 }
 
 preserve_or_default_config() {
-  log_step "4/4" "Preserve Codex configuration"
+  log_step "4/5" "Preserve Codex configuration"
   run mkdir -p "$CODEX_HOME"
   if [[ -f "$CONFIG_FILE" ]]; then
     log_keep "Existing config.toml found; leaving it unchanged: $CONFIG_FILE"
@@ -925,6 +942,74 @@ setup_shell_rc() {
   log_ok "Shell startup configured: $shell_rc"
 }
 
+run_codex_smoke_test() {
+  [[ "$RUN_SMOKE_TEST" == "1" ]] || {
+    log_info "Skipping Codex reply smoke test"
+    return 0
+  }
+
+  log_step "5/5" "Verify Codex can reply"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf "DRY-RUN: source %s and run codex exec --ephemeral --ignore-rules %q\n" "$PRIVATE_ENV_FILE" "$SMOKE_TEST_PROMPT"
+    return 0
+  fi
+
+  command_exists codex || fail "Codex CLI not found; cannot run smoke test"
+  [[ -f "$PRIVATE_ENV_FILE" ]] || fail "Private env file not found; cannot run smoke test: $PRIVATE_ENV_FILE"
+
+  # private.env is an installer-managed shell env file. Codex does not auto-source it.
+  # shellcheck disable=SC1090
+  source "$PRIVATE_ENV_FILE"
+
+  local tmp_dir reply_file log_file start_time deadline pid timed_out exit_code elapsed preview
+  tmp_dir="$(mktemp -d)"
+  reply_file="$tmp_dir/codex-reply.txt"
+  log_file="$tmp_dir/codex-exec.log"
+  start_time="$(date +%s)"
+  deadline=$((start_time + SMOKE_TEST_TIMEOUT_SECONDS))
+  timed_out=0
+
+  codex exec \
+    --skip-git-repo-check \
+    --ephemeral \
+    --ignore-rules \
+    --output-last-message "$reply_file" \
+    "$SMOKE_TEST_PROMPT" >"$log_file" 2>&1 &
+  pid=$!
+
+  while kill -0 "$pid" 2>/dev/null; do
+    if [[ "$(date +%s)" -ge "$deadline" ]]; then
+      timed_out=1
+      kill "$pid" 2>/dev/null || true
+      sleep 1
+      kill -9 "$pid" 2>/dev/null || true
+      break
+    fi
+    sleep 1
+  done
+
+  exit_code=0
+  wait "$pid" 2>/dev/null || exit_code=$?
+  elapsed=$(($(date +%s) - start_time))
+
+  if [[ "$timed_out" == "1" ]]; then
+    log_warn "Smoke test timed out after ${SMOKE_TEST_TIMEOUT_SECONDS}s; log: $log_file"
+    fail "Codex did not reply before timeout"
+  fi
+  if [[ "$exit_code" -ne 0 ]]; then
+    log_warn "Smoke test failed with exit code $exit_code; log: $log_file"
+    fail "Codex reply test failed"
+  fi
+  if [[ ! -s "$reply_file" ]]; then
+    log_warn "Smoke test produced no final reply; log: $log_file"
+    fail "Codex reply test returned an empty response"
+  fi
+
+  preview="$(tr '\n' ' ' < "$reply_file" | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c 1-160)"
+  log_ok "Codex replied in ${elapsed}s"
+  log_info "Reply preview: $preview"
+}
+
 print_completion() {
   local shell_rc
   shell_rc="$(detect_shell_rc)"
@@ -939,7 +1024,6 @@ print_completion() {
 
 main() {
   print_banner
-  detect_platform
   if [[ "$CLEANUP_BACKUPS" == "1" ]]; then
     cleanup_backups
     return 0
@@ -949,9 +1033,10 @@ main() {
     return 0
   fi
 
+  detect_platform
   validate_env_key
   validate_required_inputs
-  log_step "0/4" "Detect environment"
+  log_step "0/5" "Detect environment"
   log_info "OS: $OS_NAME ($OS_ID/$ARCH_NAME)"
   log_info "Shell: ${SHELL_NAME:-unknown}, rc: $(detect_shell_rc)"
   if command_exists codex; then
@@ -969,6 +1054,7 @@ main() {
   log_info "Managed config: $WRITE_MANAGED_CONFIG"
   log_info "Templates: $INSTALL_TEMPLATES"
   log_info "Provider history sync: $SYNC_PROVIDER_HISTORY"
+  log_info "Smoke test: $RUN_SMOKE_TEST"
   log_info "Base URL: $(mask_url "$API_BASE_URL")"
   [[ -n "$API_KEY" ]] && log_info "API key: $(mask_secret "$API_KEY")"
 
@@ -980,7 +1066,7 @@ main() {
   fi
 
   create_install_backup
-  log_step "2/4" "Install or verify Codex CLI"
+  log_step "2/5" "Install or verify Codex CLI"
   install_codex
   write_private_env
   if [[ "$WRITE_MANAGED_CONFIG" == "1" ]]; then
@@ -995,6 +1081,7 @@ main() {
     install_rules_and_templates "$source_dir"
   fi
   setup_shell_rc
+  run_codex_smoke_test
 
   print_completion
 }

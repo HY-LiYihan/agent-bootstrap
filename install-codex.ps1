@@ -9,6 +9,8 @@ param(
     [switch]$DryRun,
     [switch]$SkipCodexInstall,
     [switch]$SkipProfileUpdate,
+    [switch]$SkipSmokeTest,
+    [switch]$SmokeTest,
     [switch]$Help
 )
 
@@ -26,6 +28,7 @@ Usage:
   `$env:CODEX_TOKEN='YOUR_TOKEN'; `$env:CODEX_API_URL='YOUR_BASE_URL'; irm https://raw.githubusercontent.com/HY-LiYihan/agent-bootstrap/stable/install-codex.ps1 | iex
 
 All other options should be set through CODEX_* environment variables and are passed to agents/codex/install.ps1.
+Use -SkipSmokeTest for placeholder credentials or CI dry runs.
 "@
 }
 
@@ -82,7 +85,9 @@ function Main {
         -Restore $Restore `
         -DryRun:$DryRun `
         -SkipCodexInstall:$SkipCodexInstall `
-        -SkipProfileUpdate:$SkipProfileUpdate
+        -SkipProfileUpdate:$SkipProfileUpdate `
+        -SkipSmokeTest:$SkipSmokeTest `
+        -SmokeTest:$SmokeTest
 }
 
 Main

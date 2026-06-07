@@ -363,7 +363,7 @@
     <section class="cards" aria-label="Documentation links">
       <div class="mini-card">
         <strong data-i18n="cardCodexTitle">Codex stable path</strong>
-        <span data-i18n="cardCodexText">Installs or verifies Codex CLI, backs up ~/.codex, stores API env in private.env, and preserves config by default.</span>
+        <span data-i18n="cardCodexText">Installs or verifies Codex CLI, backs up ~/.codex, stores API env in private.env, preserves config, and runs a final reply test.</span>
       </div>
       <div class="mini-card">
         <strong data-i18n="cardHermesTitle">Hermes Agent</strong>
@@ -373,6 +373,15 @@
         <strong data-i18n="cardDocsTitle">More docs</strong>
         <span data-i18n-html="cardDocsText">Read the <a href="https://github.com/HY-LiYihan/agent-bootstrap#readme">README</a>, <a href="./config-notes.md">Codex config notes</a>, and <a href="./ccswitch-replacement.md">switcher notes</a>.</span>
       </div>
+    </section>
+
+    <section class="notes" aria-label="CI-tested install paths">
+      <strong data-i18n="testTitle">CI-tested install paths</strong>
+      <ul>
+        <li data-i18n="testUbuntu">Ubuntu/Linux: Bash syntax, stable entrypoint dry-run, Bun/npm/Node fallback, backup/restore, cleanup, provider-history sync, and fake Codex reply smoke test.</li>
+        <li data-i18n="testMac">macOS: stable entrypoint dry-run plus fake Codex reply smoke test through the Bash installer.</li>
+        <li data-i18n="testWindows">Windows: PowerShell syntax, stable entrypoint dry-run, backup/restore, provider config checks, and fake Codex reply smoke test through the PowerShell installer.</li>
+      </ul>
     </section>
 
     <footer data-i18n="footerText">This page is static HTML. It does not store form values in localStorage, sessionStorage, cookies, or the URL. Language detection may request a public IP geolocation endpoint before any key is entered, and falls back to browser language.</footer>
@@ -418,11 +427,15 @@
         resetButton: 'Reset',
         explainTitle: 'What this command does',
         cardCodexTitle: 'Codex stable path',
-        cardCodexText: 'Installs or verifies Codex CLI, backs up ~/.codex, stores API env in private.env, and preserves config by default.',
+        cardCodexText: 'Installs or verifies Codex CLI, backs up ~/.codex, stores API env in private.env, preserves config, and runs a final reply test.',
         cardHermesTitle: 'Hermes Agent',
         cardHermesText: 'Uses the official installer on macOS/Linux and writes ~/.hermes/config.yaml plus ~/.hermes/.env for custom OpenAI-compatible gateways.',
         cardDocsTitle: 'More docs',
         cardDocsText: 'Read the <a href="https://github.com/HY-LiYihan/agent-bootstrap#readme">README</a>, <a href="./config-notes.md">Codex config notes</a>, and <a href="./ccswitch-replacement.md">switcher notes</a>.',
+        testTitle: 'CI-tested install paths',
+        testUbuntu: 'Ubuntu/Linux: Bash syntax, stable entrypoint dry-run, Bun/npm/Node fallback, backup/restore, cleanup, provider-history sync, and fake Codex reply smoke test.',
+        testMac: 'macOS: stable entrypoint dry-run plus fake Codex reply smoke test through the Bash installer.',
+        testWindows: 'Windows: PowerShell syntax, stable entrypoint dry-run, backup/restore, provider config checks, and fake Codex reply smoke test through the PowerShell installer.',
         footerText: 'This page is static HTML. It does not store form values in localStorage, sessionStorage, cookies, or the URL. Language detection may request a public IP geolocation endpoint before any key is entered, and falls back to browser language.',
         languageIp: 'Language selected by IP region.',
         languageBrowser: 'Language selected by browser settings.',
@@ -436,7 +449,8 @@
             'Installs or verifies Codex CLI through the stable Codex entrypoint.',
             'Backs up the whole ~/.codex folder before writing installer-managed files.',
             'Stores API env in ~/.codex/private.env instead of config.toml.',
-            'Leaves existing config.toml unchanged; if config.toml is missing, Codex uses official defaults.'
+            'Leaves existing config.toml unchanged; if config.toml is missing, Codex uses official defaults.',
+            'Runs a final codex exec reply smoke test unless you pass --skip-smoke-test.'
           ],
           codexAdvanced: [
             'Installs or verifies Codex CLI through the stable Codex entrypoint.',
@@ -485,11 +499,15 @@
         resetButton: '重置',
         explainTitle: '这条命令会做什么',
         cardCodexTitle: 'Codex 稳定路径',
-        cardCodexText: '安装或确认 Codex CLI，备份 ~/.codex，把 API env 写入 private.env，并默认保留 config。',
+        cardCodexText: '安装或确认 Codex CLI，备份 ~/.codex，把 API env 写入 private.env，保留 config，并运行最终回复测试。',
         cardHermesTitle: 'Hermes Agent',
         cardHermesText: 'macOS/Linux 使用官方安装器，并写入 ~/.hermes/config.yaml 和 ~/.hermes/.env，适配自定义 OpenAI 兼容网关。',
         cardDocsTitle: '更多文档',
         cardDocsText: '查看 <a href="https://github.com/HY-LiYihan/agent-bootstrap#readme">README</a>、<a href="./config-notes.md">Codex 配置说明</a> 和 <a href="./ccswitch-replacement.md">切换器说明</a>。',
+        testTitle: 'CI 已测试安装路径',
+        testUbuntu: 'Ubuntu/Linux：Bash 语法、stable 入口 dry-run、Bun/npm/Node fallback、备份/恢复、清理、provider-history sync、fake Codex 回复 smoke test。',
+        testMac: 'macOS：stable 入口 dry-run，以及通过 Bash 安装器执行 fake Codex 回复 smoke test。',
+        testWindows: 'Windows：PowerShell 语法、stable 入口 dry-run、备份/恢复、provider 配置检查，以及通过 PowerShell 安装器执行 fake Codex 回复 smoke test。',
         footerText: '这是静态 HTML 页面，不会把表单值写入 localStorage、sessionStorage、cookie 或 URL。语言检测可能会在输入 key 之前请求公开 IP 地区服务，失败时回退到浏览器语言。',
         languageIp: '已根据 IP 地区选择语言。',
         languageBrowser: '已根据浏览器语言选择。',
@@ -503,7 +521,8 @@
             '通过稳定 Codex 入口安装或确认 Codex CLI。',
             '写入前备份整个 ~/.codex 文件夹。',
             '把 API env 存在 ~/.codex/private.env，不写进 config.toml。',
-            '已有 config.toml 原样保留；没有 config.toml 时让 Codex 使用官方默认。'
+            '已有 config.toml 原样保留；没有 config.toml 时让 Codex 使用官方默认。',
+            '最后运行 codex exec 回复 smoke test；需要跳过时传 --skip-smoke-test。'
           ],
           codexAdvanced: [
             '通过稳定 Codex 入口安装或确认 Codex CLI。',
